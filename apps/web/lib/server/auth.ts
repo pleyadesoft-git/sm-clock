@@ -27,14 +27,6 @@ export class AuthError extends Error {
   }
 }
 
-const DEV_FALLBACK_CONTEXT: AuthenticatedContext = {
-  userId: '00000000-0000-4000-8000-000000000001',
-  email: 'admin@smclock.mx',
-  rol: 'SUPER_ADMIN',
-  tenantId: '11111111-1111-4111-8111-111111111111',
-  aal: 'aal2',
-};
-
 /**
  * Obtiene la lista blanca de correos autorizados como SUPER_ADMIN fundadores
  * desde la variable de entorno `SUPER_ADMIN_BOOTSTRAP_EMAILS` (separada por comas).
@@ -220,65 +212,87 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    if (isDev) {
-      return DEV_FALLBACK_CONTEXT;
-    }
     throw new AuthError('Sesión no válida o expirada', 401);
   }
 
+  const normalizedEmail = (user.email ?? '').trim().toLowerCase();
   const adminClient = createSupabaseServiceClient();
-  const { data: perfil } = await adminClient
-    .from('perfiles_usuarios')
-    .select('rol, tenant_id, activo')
-    .eq('id', user.id)
-    .maybeSingle();
+  const fullNameFallback =
+    typeof user.user_metadata?.['full_name'] === 'string'
+      ? user.user_metadata['full_name']
+      : null;
 
   let rol: UserRole;
   let tenantId: string | null;
 
-  if (perfil) {
-    const parsedRol = UserRoleSchema.safeParse(perfil.rol);
-    if (!perfil.activo || !parsedRol.success) {
-      throw new AuthError(
-        'Tu cuenta de usuario está desactivada o no tiene un rol válido en el tenant',
-        403,
-      );
-    }
-    rol = parsedRol.data;
-    tenantId = perfil.tenant_id ?? null;
-
-    const parsedMeta = JwtAppMetadataSchema.safeParse(user.app_metadata);
-    if (
-      !parsedMeta.success ||
-      parsedMeta.data.rol !== rol ||
-      (parsedMeta.data.tenant_id ?? null) !== tenantId
-    ) {
-      await adminClient.auth.admin.updateUserById(user.id, {
-        app_metadata: {
-          rol,
-          ...(tenantId ? { tenant_id: tenantId } : {}),
-        },
-      });
-    }
-  } else {
-    const fullNameFallback =
-      typeof user.user_metadata?.['full_name'] === 'string'
-        ? user.user_metadata['full_name']
-        : null;
-
-    const bootstrappedSuperAdmin = await claimBootstrapSuperAdminForUser({
+  // 1. Si el correo está en SUPER_ADMIN_BOOTSTRAP_EMAILS, tiene autorización exclusiva de SUPER_ADMIN
+  if (isBootstrapSuperAdminEmail(normalizedEmail)) {
+    const bootstrapped = await claimBootstrapSuperAdminForUser({
       userId: user.id,
-      email: user.email ?? '',
+      email: normalizedEmail,
       fullNameFallback,
     });
+    rol = bootstrapped?.rol ?? 'SUPER_ADMIN';
+    tenantId = null;
+  } else {
+    // 2. Buscar perfil existente del usuario en su empresa (por ID o por correo)
+    const { data: perfilById } = await adminClient
+      .from('perfiles_usuarios')
+      .select('id, rol, tenant_id, activo, nombre_completo')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    if (bootstrappedSuperAdmin) {
-      rol = bootstrappedSuperAdmin.rol;
-      tenantId = bootstrappedSuperAdmin.tenantId;
+    let perfil = perfilById;
+
+    if (!perfil && normalizedEmail) {
+      const { data: perfilByEmail } = await adminClient
+        .from('perfiles_usuarios')
+        .select('id, rol, tenant_id, activo, nombre_completo')
+        .ilike('email', normalizedEmail)
+        .maybeSingle();
+
+      if (perfilByEmail && perfilByEmail.rol !== 'SUPER_ADMIN') {
+        perfil = perfilByEmail;
+      }
+    }
+
+    if (perfil) {
+      const parsedRol = UserRoleSchema.safeParse(perfil.rol);
+      if (!perfil.activo || !parsedRol.success) {
+        throw new AuthError(
+          'Tu cuenta de usuario está desactivada o no tiene un rol válido en el tenant',
+          403,
+        );
+      }
+
+      // Regla estricta Paso 1: solo correos en SUPER_ADMIN_BOOTSTRAP_EMAILS pueden tener rol SUPER_ADMIN
+      if (parsedRol.data === 'SUPER_ADMIN') {
+        throw new AuthError(
+          'Solo las cuentas registradas en SUPER_ADMIN_BOOTSTRAP_EMAILS tienen acceso a la sección de Super-Admin.',
+          403,
+        );
+      }
+
+      rol = parsedRol.data;
+      tenantId = perfil.tenant_id ?? null;
+
+      const parsedMeta = JwtAppMetadataSchema.safeParse(user.app_metadata);
+      if (
+        !parsedMeta.success ||
+        parsedMeta.data.rol !== rol ||
+        (parsedMeta.data.tenant_id ?? null) !== tenantId
+      ) {
+        await adminClient.auth.admin.updateUserById(user.id, {
+          app_metadata: {
+            rol,
+            ...(tenantId ? { tenant_id: tenantId } : {}),
+          },
+        });
+      }
     } else {
       const claimed = await claimPendingInvitationForUser({
         userId: user.id,
-        email: user.email ?? '',
+        email: normalizedEmail,
         fullNameFallback,
         authProvider:
           user.app_metadata?.['provider'] === 'google' ? 'GOOGLE' : 'EMAIL',
@@ -286,7 +300,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
 
       if (!claimed) {
         throw new AuthError(
-          'No existe una invitación activa para tu correo en esta organización. Solicita acceso al administrador.',
+          'No existe una cuenta o invitación activa para tu correo en esta empresa. Solicita acceso al administrador.',
           403,
         );
       }
@@ -303,7 +317,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
     if (isDev) {
       return {
         userId: user.id,
-        email: user.email ?? '',
+        email: normalizedEmail,
         rol,
         tenantId,
         aal: 'aal2',
@@ -332,7 +346,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
 
   return {
     userId: user.id,
-    email: user.email ?? '',
+    email: normalizedEmail,
     rol,
     tenantId,
     aal: currentAal,

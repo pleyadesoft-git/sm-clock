@@ -10,11 +10,29 @@ export interface SheetProps {
   title: string;
   description?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
+}
+
+export interface SheetFooterProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+/**
+ * Pie fijo para diálogos, modales y drawers (`Sheet`).
+ * Mantiene visibles las acciones primarias ("Guardar", "Cancelar") sin obligar
+ * al usuario a hacer scroll hasta el final del formulario.
+ */
+export function SheetFooter({ children, className = '' }: SheetFooterProps) {
+  return (
+    <div className={`ios-sheet-footer ${className}`.trim()}>{children}</div>
+  );
 }
 
 /**
  * Componente Sheet adaptativo (lateral en desktop, hoja inferior en móvil)
- * basado en `<dialog>` nativo con `showModal()` y `closedby="any"`.
+ * basado en `<dialog>` nativo con `showModal()`, `closedby="any"`, cuerpo
+ * desplazable (`.ios-sheet-body`) y pie de acciones fijo (`.ios-sheet-footer`).
  * Cumple con `modern-web-guidance` (`dialog` y `light-dismiss-a-dialog`).
  */
 export function Sheet({
@@ -23,6 +41,7 @@ export function Sheet({
   title,
   description,
   children,
+  footer,
 }: SheetProps) {
   const dialogRef = React.useRef<HTMLDialogElement | null>(null);
   const titleId = React.useId();
@@ -55,21 +74,30 @@ export function Sheet({
       typeof HTMLDialogElement !== 'undefined' &&
       !('closedBy' in HTMLDialogElement.prototype)
     ) {
-      const handleBackdropClick = (event: MouseEvent) => {
-        if (event.target !== dialog) return;
+      const isOutside = (event: PointerEvent) => {
         const rect = dialog.getBoundingClientRect();
-        const isInsideContent =
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width;
-        if (!isInsideContent) {
+        return (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        );
+      };
+      let pressedOutside = false;
+      const handlePointerDown = (event: PointerEvent) => {
+        pressedOutside = isOutside(event);
+      };
+      const handlePointerUp = (event: PointerEvent) => {
+        if (pressedOutside && isOutside(event)) {
           dialog.close();
         }
       };
-      dialog.addEventListener('click', handleBackdropClick);
-      cleanupFallback = () =>
-        dialog.removeEventListener('click', handleBackdropClick);
+      dialog.addEventListener('pointerdown', handlePointerDown);
+      dialog.addEventListener('pointerup', handlePointerUp);
+      cleanupFallback = () => {
+        dialog.removeEventListener('pointerdown', handlePointerDown);
+        dialog.removeEventListener('pointerup', handlePointerUp);
+      };
     }
 
     return () => {
@@ -85,7 +113,7 @@ export function Sheet({
       className="ios-sheet"
       {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
     >
-      <div className="flex items-start justify-between gap-[var(--s-3)] border-b border-[var(--separator)] pb-[var(--s-3)]">
+      <div className="ios-sheet-header">
         <div className="flex flex-col gap-[var(--s-1)]">
           <h2 id={titleId} className="text-lg font-semibold text-[var(--text)]">
             {title}
@@ -102,7 +130,8 @@ export function Sheet({
           <X className="size-5" strokeWidth={1.75} aria-hidden="true" />
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto">{children}</div>
+      <div className="ios-sheet-body">{children}</div>
+      {footer ? <div className="ios-sheet-footer">{footer}</div> : null}
     </dialog>
   );
 }

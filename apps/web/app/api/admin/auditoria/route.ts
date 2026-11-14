@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sanitizeSearchQuery } from '@sm-clock/contracts';
 import { requireSuperAdmin } from '@/lib/server/auth';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
@@ -14,7 +15,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     100,
     Math.max(10, Number(searchParams.get('pageSize') ?? '25')),
   );
-  const search = (searchParams.get('search') ?? '').trim();
+  const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
   const admin = createSupabaseAdminClient();
   let query = admin
@@ -26,8 +27,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .order('created_at', { ascending: false });
 
   if (search) {
-    const safeSearch = search.replace(/[%_]/g, '');
-    query = query.ilike('accion', `%${safeSearch}%`);
+    query = query.ilike('accion', `%${search}%`);
   }
 
   const from = (page - 1) * pageSize;

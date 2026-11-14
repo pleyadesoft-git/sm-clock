@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
+  sanitizeSearchQuery,
   TenantCreateWithAdminSchema,
   TenantListQuerySchema,
   type Database,
@@ -54,10 +55,12 @@ export async function GET(request: NextRequest) {
       query = query.eq('plan_codigo', plan_codigo);
     }
     if (search && search.length > 0) {
-      const safeTerm = search.replaceAll(/[%_]/g, '');
-      query = query.or(
-        `nombre_comercial.ilike.%${safeTerm}%,razon_social.ilike.%${safeTerm}%,rfc.ilike.%${safeTerm}%,tenant_code.ilike.%${safeTerm}%`,
-      );
+      const safeTerm = sanitizeSearchQuery(search);
+      if (safeTerm) {
+        query = query.or(
+          `nombre_comercial.ilike.%${safeTerm}%,razon_social.ilike.%${safeTerm}%,rfc.ilike.%${safeTerm}%,tenant_code.ilike.%${safeTerm}%`,
+        );
+      }
     }
 
     const { data, error, count } = await query

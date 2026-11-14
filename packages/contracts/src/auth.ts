@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  containsCodeInjectionPattern,
+  safeEmailSchema,
+  safeSanitizedTextSchema,
+} from './sanitize';
 
 export const UserRoleSchema = z.enum([
   'SUPER_ADMIN',
@@ -21,8 +26,159 @@ export function roleRequiresMfa(rol: UserRole): boolean {
   return MFA_REQUIRED_ROLES.includes(rol);
 }
 
+/**
+ * Rutas públicas que no requieren sesión activa.
+ */
+export const PUBLIC_PATHS = [
+  '/login',
+  '/invitacion',
+  '/recuperar-contrasena',
+  '/restablecer-contrasena',
+  '/auth/callback',
+  '/api/invitaciones/verificar',
+  '/api/invitaciones/aceptar',
+  '/api/auth/callback',
+  '/api/auth/recuperar-contrasena',
+  '/api/auth/restablecer-contrasena',
+  '/api/health',
+  '/api/v1/agente',
+  '/manifest.webmanifest',
+  '/sw.js',
+  '/favicon.ico',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+] as const;
+
+/**
+ * Rutas de autenticación de invitado (si el usuario ya tiene sesión válida, se redirige a su home).
+ */
+export const AUTH_GUEST_ONLY_PATHS = [
+  '/login',
+  '/recuperar-contrasena',
+] as const;
+
+/**
+ * Rutas exclusivas para `SUPER_ADMIN` (dueño del SaaS).
+ */
+export const SUPER_ADMIN_ONLY_PATHS = ['/admin', '/api/admin'] as const;
+
+/**
+ * Rutas exclusivas para administradores (`SUPER_ADMIN` o `ADMIN_EMPRESA`),
+ * prohibidas para `OPERADOR`.
+ */
+export const TENANT_ADMIN_ONLY_PATHS = [
+  '/usuarios',
+  '/configuracion',
+  '/empleados',
+  '/sucursales',
+  '/dashboard/empleados',
+  '/api/usuarios',
+  '/api/configuracion',
+  '/api/empleados',
+  '/api/sucursales',
+] as const;
+
+function matchesPathPrefix(
+  pathname: string,
+  prefixes: readonly string[],
+): boolean {
+  return prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+export function isPublicPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, PUBLIC_PATHS);
+}
+
+export function isAuthGuestOnlyPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, AUTH_GUEST_ONLY_PATHS);
+}
+
+export function isSuperAdminOnlyPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, SUPER_ADMIN_ONLY_PATHS);
+}
+
+export function isTenantAdminOnlyPath(pathname: string): boolean {
+  return matchesPathPrefix(pathname, TENANT_ADMIN_ONLY_PATHS);
+}
+
+export function getDefaultHomeForRole(rol: UserRole): string {
+  return rol === 'SUPER_ADMIN' ? '/admin/empresas' : '/dashboard';
+}
+
+/**
+ * Evalúa si un rol autenticado tiene permiso para acceder a `pathname`
+ * aplicando lista blanca por rol (tanto en Middleware como en Browser Guard).
+ */
+export function canRoleAccessPath(rol: UserRole, pathname: string): boolean {
+  if (isSuperAdminOnlyPath(pathname)) {
+    return rol === 'SUPER_ADMIN';
+  }
+  if (isTenantAdminOnlyPath(pathname)) {
+    return rol === 'SUPER_ADMIN' || rol === 'ADMIN_EMPRESA';
+  }
+  return true;
+}
+
+/**
+ * Sanitiza el parámetro `?next=` para prevenir ataques de Open Redirect (`//evil.com`,
+ * `https://evil.com`, `javascript:...`, `\r\n`) y verifica que el destino sea permitido
+ * para el rol del usuario.
+ */
+export function sanitizeRedirectPath(
+  rawNext: string | null | undefined,
+  rol?: UserRole | null | undefined,
+): string {
+  const defaultDest = rol ? getDefaultHomeForRole(rol) : '/dashboard';
+  if (!rawNext || typeof rawNext !== 'string') {
+    return defaultDest;
+  }
+
+  const trimmed = rawNext.trim();
+  if (
+    !trimmed.startsWith('/') ||
+    trimmed.startsWith('//') ||
+    trimmed.startsWith('/\\') ||
+    /[\p{Cc}\p{Cf}<>\\]/u.test(trimmed) ||
+    containsCodeInjectionPattern(trimmed)
+  ) {
+    return defaultDest;
+  }
+
+  let parsedPathname: string;
+  let parsedSearch: string;
+  try {
+    const dummyUrl = new URL(trimmed, 'https://smclock.local');
+    if (dummyUrl.origin !== 'https://smclock.local') {
+      return defaultDest;
+    }
+    parsedPathname = dummyUrl.pathname;
+    parsedSearch = dummyUrl.search;
+  } catch {
+    return defaultDest;
+  }
+
+  if (
+    parsedPathname === '/' ||
+    parsedPathname === '/admin' ||
+    parsedPathname.startsWith('/api/') ||
+    parsedPathname.startsWith('/auth/') ||
+    parsedPathname.startsWith('/mfa') ||
+    isPublicPath(parsedPathname)
+  ) {
+    return defaultDest;
+  }
+
+  if (rol && !canRoleAccessPath(rol, parsedPathname)) {
+    return defaultDest;
+  }
+
+  return `${parsedPathname}${parsedSearch}`;
+}
+
 export const LoginRequestSchema = z.object({
-  email: z.string().trim().email('Ingresa un correo electrónico válido'),
+  email: safeEmailSchema('Ingresa un correo electrónico válido'),
   password: z
     .string()
     .min(8, 'La contraseña debe tener al menos 8 caracteres')
@@ -32,7 +188,7 @@ export const LoginRequestSchema = z.object({
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 
 export const ForgotPasswordRequestSchema = z.object({
-  email: z.string().trim().email('Ingresa un correo electrónico válido'),
+  email: safeEmailSchema('Ingresa un correo electrónico válido'),
 });
 
 export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequestSchema>;
@@ -42,7 +198,13 @@ export const ResetPasswordRequestSchema = z.object({
     .string()
     .min(8, 'La contraseña debe tener al menos 8 caracteres')
     .max(128, 'La contraseña excede la longitud permitida'),
-  tokenHash: z.string().trim().min(10).optional(),
+  tokenHash: z
+    .string()
+    .trim()
+    .min(10)
+    .max(256)
+    .regex(/^[A-Za-z0-9._-]+$/, 'Token de recuperación inválido')
+    .optional(),
 });
 
 export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequestSchema>;
@@ -66,22 +228,49 @@ export type JwtAppMetadata = z.infer<typeof JwtAppMetadataSchema>;
 
 export const PasskeyRenameRequestSchema = z.object({
   passkeyId: z.string().uuid('ID de llave de acceso inválido'),
-  friendlyName: z
-    .string()
-    .trim()
-    .min(2, 'El nombre del dispositivo debe tener al menos 2 caracteres')
-    .max(120, 'El nombre del dispositivo no puede exceder 120 caracteres'),
+  friendlyName: safeSanitizedTextSchema({
+    min: 2,
+    max: 120,
+    minMessage: 'El nombre del dispositivo debe tener al menos 2 caracteres',
+    maxMessage: 'El nombre del dispositivo no puede exceder 120 caracteres',
+    injectionMessage:
+      'El nombre del dispositivo contiene caracteres o código no permitido',
+  }),
 });
 
 export type PasskeyRenameRequest = z.infer<typeof PasskeyRenameRequestSchema>;
 
 export const WebAuthnFactorEnrollSchema = z.object({
-  friendlyName: z
-    .string()
-    .trim()
-    .min(2, 'Ingresa un nombre descriptivo para tu dispositivo biométrico')
-    .max(120, 'El nombre no puede exceder 120 caracteres'),
+  friendlyName: safeSanitizedTextSchema({
+    min: 2,
+    max: 120,
+    minMessage:
+      'Ingresa un nombre descriptivo para tu dispositivo biométrico',
+    maxMessage: 'El nombre no puede exceder 120 caracteres',
+    injectionMessage:
+      'El nombre del dispositivo contiene caracteres o código no permitido',
+  }),
 });
 
 export type WebAuthnFactorEnroll = z.infer<typeof WebAuthnFactorEnrollSchema>;
 
+export const UpdateOwnProfileRequestSchema = z.object({
+  nombre_completo: safeSanitizedTextSchema({
+    min: 2,
+    max: 140,
+    minMessage: 'Ingresa tu nombre completo (mínimo 2 caracteres)',
+    maxMessage: 'El nombre completo no puede exceder 140 caracteres',
+    injectionMessage:
+      'El nombre completo contiene caracteres o código no permitido',
+  }),
+  email: safeEmailSchema('Ingresa un correo electrónico válido'),
+  password: z
+    .string()
+    .min(8, 'La contraseña debe tener al menos 8 caracteres')
+    .max(128, 'La contraseña excede la longitud permitida')
+    .optional(),
+});
+
+export type UpdateOwnProfileRequest = z.infer<
+  typeof UpdateOwnProfileRequestSchema
+>;

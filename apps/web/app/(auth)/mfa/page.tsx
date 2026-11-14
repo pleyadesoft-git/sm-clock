@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Fingerprint, KeyRound, ShieldCheck } from 'lucide-react';
 import {
   MfaVerifyRequestSchema,
+  sanitizeRedirectPath,
   UserRoleSchema,
   WebAuthnFactorEnrollSchema,
 } from '@sm-clock/contracts';
@@ -59,12 +60,16 @@ export default function MfaVerificationPage() {
       data: { user },
     } = await supabase.auth.getUser();
     const parsedRol = UserRoleSchema.safeParse(user?.app_metadata?.['rol']);
+    const nextParam =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('next')
+        : null;
+    const safeDestination = sanitizeRedirectPath(
+      nextParam,
+      parsedRol.success ? parsedRol.data : null,
+    );
 
-    if (parsedRol.success && parsedRol.data === 'SUPER_ADMIN') {
-      router.push('/admin/empresas');
-    } else {
-      router.push('/dashboard');
-    }
+    router.replace(safeDestination);
   }, [router]);
 
   React.useEffect(() => {
@@ -125,7 +130,12 @@ export default function MfaVerificationPage() {
 
         if (active) {
           setTotpFactorId(enrolled.id);
-          setQrCodeSvg(enrolled.totp.qr_code);
+          const rawQr = enrolled.totp.qr_code;
+          setQrCodeSvg(
+            typeof rawQr === 'string' && rawQr.startsWith('data:image/svg+xml')
+              ? rawQr
+              : null,
+          );
           setTotpSecret(enrolled.totp.secret);
         }
       } catch {

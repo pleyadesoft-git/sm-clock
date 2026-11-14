@@ -12,6 +12,7 @@ export default tseslint.config(
       'supabase/**',
       'agent/**',
       '**/next-env.d.ts',
+      '**/public/sw.js',
     ],
   },
   js.configs.recommended,

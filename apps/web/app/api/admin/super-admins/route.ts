@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   AuthProviderSchema,
   CreateSuperAdminRequestSchema,
+  sanitizeSearchQuery,
   type SuperAdminRow,
 } from '@sm-clock/contracts';
 import {
@@ -18,7 +19,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const { searchParams } = new URL(request.url);
-  const search = (searchParams.get('search') ?? '').trim().toLowerCase();
+  const search = sanitizeSearchQuery(
+    searchParams.get('search') ?? '',
+  ).toLowerCase();
   const estatusFilter = searchParams.get('estatus') ?? '';
 
   const admin = createSupabaseServiceClient();

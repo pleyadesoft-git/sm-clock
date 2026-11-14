@@ -6,6 +6,23 @@ export const metadata: Metadata = {
   title: 'SM Clock — Plataforma SaaS de Control de Asistencia',
   description:
     'Sincronización de asistencia en tiempo real para relojes ZKTeco, Hikvision y TA.Cloud hacia CONTPAQi Nóminas, TRESS y RH4000.',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'SM Clock',
+  },
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
 };
 
 const FOUC_COLOR_SCHEME_SCRIPT = `

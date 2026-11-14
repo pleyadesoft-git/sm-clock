@@ -11,7 +11,11 @@ import {
   Mail,
   UserCheck,
 } from 'lucide-react';
-import { AcceptInvitationPasswordRequestSchema } from '@sm-clock/contracts';
+import {
+  AcceptInvitationPasswordRequestSchema,
+  roleRequiresMfa,
+  UserRoleSchema,
+} from '@sm-clock/contracts';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Badge } from '@/components/ui/badge';
@@ -145,11 +149,21 @@ export default function InvitacionPreRegistroPage() {
       });
 
       if (signInError) {
-        router.push('/login');
+        router.replace('/login');
         return;
       }
 
-      router.push('/dashboard');
+      const rolParsed = UserRoleSchema.safeParse(body.data.rol);
+      if (rolParsed.success && roleRequiresMfa(rolParsed.data)) {
+        const { data: aalData } =
+          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+          router.replace('/mfa');
+          return;
+        }
+      }
+
+      router.replace('/dashboard');
     } catch {
       setFormError('Error de conexión al completar el pre-registro.');
     } finally {

@@ -389,8 +389,36 @@ export default function AdminSuperAdminsPage() {
         onOpenChange={setSheetOpen}
         title="Registrar nuevo Super-Administrador"
         description="Otorga acceso global al panel de administración de clientes (/admin/*) mediante Google Auth y MFA obligatorio."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setSheetOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="super-admin-sheet-form"
+              disabled={createMutation.isPending}
+            >
+              <ShieldCheck
+                className="size-4"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+              <span>
+                {createMutation.isPending
+                  ? 'Registrando…'
+                  : 'Autorizar Super-Admin'}
+              </span>
+            </Button>
+          </>
+        }
       >
         <form
+          id="super-admin-sheet-form"
           onSubmit={(e) => {
             e.preventDefault();
             setFormError(null);
@@ -459,28 +487,6 @@ export default function AdminSuperAdminsPage() {
               {formError}
             </div>
           ) : null}
-
-          <div className="flex items-center justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setSheetOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              <ShieldCheck
-                className="size-4"
-                strokeWidth={1.75}
-                aria-hidden="true"
-              />
-              <span>
-                {createMutation.isPending
-                  ? 'Registrando…'
-                  : 'Autorizar Super-Admin'}
-              </span>
-            </Button>
-          </div>
         </form>
       </Sheet>
     </AppShell>

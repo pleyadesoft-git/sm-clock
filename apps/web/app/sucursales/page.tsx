@@ -3,6 +3,10 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Pencil, Plus } from 'lucide-react';
+import {
+  SucursalCreateSchema,
+  SucursalUpdateSchema,
+} from '@sm-clock/contracts';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -84,17 +88,31 @@ export default function SucursalesPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const rawBody = editing
+      ? { id: editing.id, clave, nombre, direccion: direccion || null, activa }
+      : { clave, nombre, direccion: direccion || null, activa };
+
+    const parsed = editing
+      ? SucursalUpdateSchema.safeParse(rawBody)
+      : SucursalCreateSchema.safeParse(rawBody);
+
+    if (!parsed.success) {
+      toast({
+        title: 'Datos de sucursal inválidos',
+        description:
+          parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados.',
+        variant: 'danger',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const method = editing ? 'PATCH' : 'POST';
-      const body = editing
-        ? { id: editing.id, clave, nombre, direccion: direccion || null, activa }
-        : { clave, nombre, direccion: direccion || null, activa };
-
       const res = await fetch('/api/sucursales', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify(parsed.data),
       });
 
       const json = (await res.json()) as { error?: string };

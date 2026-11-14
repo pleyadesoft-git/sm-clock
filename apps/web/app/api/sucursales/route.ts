@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  sanitizeSearchQuery,
   SucursalCreateSchema,
   SucursalUpdateSchema,
 } from '@sm-clock/contracts';
@@ -55,7 +56,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     100,
     Math.max(10, Number(searchParams.get('pageSize') ?? '25')),
   );
-  const search = (searchParams.get('search') ?? '').trim();
+  const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
   const admin = createSupabaseAdminClient();
   let query = admin
@@ -67,8 +68,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .order('clave', { ascending: true });
 
   if (search) {
-    const safe = search.replace(/[%_]/g, '');
-    query = query.or(`clave.ilike.%${safe}%,nombre.ilike.%${safe}%`);
+    query = query.or(`clave.ilike.%${search}%,nombre.ilike.%${search}%`);
   }
 
   const from = (page - 1) * pageSize;

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import {
   InviteUserRequestSchema,
+  sanitizeSearchQuery,
   UserRoleSchema,
   type TenantUserRow,
 } from '@sm-clock/contracts';
@@ -22,7 +23,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { tenantId } = auth;
   const { searchParams } = new URL(request.url);
-  const search = (searchParams.get('search') ?? '').trim().toLowerCase();
+  const search = sanitizeSearchQuery(
+    searchParams.get('search') ?? '',
+  ).toLowerCase();
   const rolFilter = searchParams.get('rol') ?? '';
   const estatusFilter = searchParams.get('estatus') ?? '';
 

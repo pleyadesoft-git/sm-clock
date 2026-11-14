@@ -29,6 +29,7 @@
   --r-md: 14px;
   --r-lg: 20px;
   --r-xl: 28px;
+  --r-pill: 9999px;
 
   /* 4px spacing scale */
   --s-1: 4px;
@@ -306,11 +307,10 @@ dialog.ios-sheet[open] {
   border: none;
   border-inline-start: var(--border-hairline) solid var(--separator);
   box-shadow: var(--shadow-2);
-  padding: var(--s-6);
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 @media (width < 640px) {
@@ -325,8 +325,54 @@ dialog.ios-sheet[open] {
     border-start-end-radius: var(--r-xl);
     border-inline-start: none;
     border-block-start: var(--border-hairline) solid var(--separator);
-    padding-block-end: calc(var(--s-6) + env(safe-area-inset-bottom));
   }
+}
+
+.ios-sheet-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-inline: var(--s-6);
+  padding-block-start: var(--s-6);
+  padding-block-end: var(--s-4);
+  border-block-end: var(--border-hairline) solid var(--separator);
+  background-color: var(--surface-translucent);
+  backdrop-filter: var(--blur);
+  flex-shrink: 0;
+}
+
+.ios-sheet-body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline: var(--s-6);
+  padding-block: var(--s-5);
+}
+
+.ios-sheet-footer {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  padding-inline: var(--s-6);
+  padding-block-start: var(--s-4);
+  padding-block-end: calc(var(--s-4) + env(safe-area-inset-bottom, 0px));
+  border-block-start: var(--border-hairline) solid var(--separator);
+  background-color: var(--surface-translucent);
+  backdrop-filter: var(--blur);
+}
+
+.ios-sheet-body .ios-sheet-footer {
+  margin-inline: calc(var(--s-6) * -1);
+  margin-block-end: calc(var(--s-5) * -1);
+  margin-block-start: var(--s-4);
 }
 
 /* Responsive DataTable rules (modern-web-guidance: responsive-table & sortable-table) */

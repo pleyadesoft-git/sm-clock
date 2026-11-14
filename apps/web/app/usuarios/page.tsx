@@ -11,7 +11,12 @@ import {
   UserCheck,
   UserPlus,
 } from 'lucide-react';
-import type { TenantUserRole, TenantUserRow } from '@sm-clock/contracts';
+import {
+  InviteUserRequestSchema,
+  UpdateTenantUserRequestSchema,
+  type TenantUserRole,
+  type TenantUserRow,
+} from '@sm-clock/contracts';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,16 +94,27 @@ export default function UsuariosPage() {
 
   async function handleSendInvitation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const parsed = InviteUserRequestSchema.safeParse({
+      email: inviteEmail,
+      nombre_completo: inviteNombre,
+      rol: inviteRol,
+    });
+    if (!parsed.success) {
+      toast({
+        title: 'Datos de invitación inválidos',
+        description:
+          parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados.',
+        variant: 'danger',
+      });
+      return;
+    }
+
     setInviting(true);
     try {
       const res = await fetch('/api/usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: inviteEmail,
-          nombre_completo: inviteNombre,
-          rol: inviteRol,
-        }),
+        body: JSON.stringify(parsed.data),
       });
 
       const body = (await res.json()) as {
@@ -134,15 +150,27 @@ export default function UsuariosPage() {
   async function handleUpdateUser(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingUser) return;
+
+    const parsed = UpdateTenantUserRequestSchema.safeParse({
+      rol: editRol,
+      activo: editActivo,
+    });
+    if (!parsed.success) {
+      toast({
+        title: 'Datos de usuario inválidos',
+        description:
+          parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados.',
+        variant: 'danger',
+      });
+      return;
+    }
+
     setUpdatingUser(true);
     try {
       const res = await fetch(`/api/usuarios/${editingUser.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rol: editRol,
-          activo: editActivo,
-        }),
+        body: JSON.stringify(parsed.data),
       });
 
       const body = (await res.json()) as { error?: string };

@@ -216,8 +216,35 @@ export function EmpresaSheet({
       onOpenChange={onOpenChange}
       title={isEditing ? 'Editar empresa' : 'Nueva empresa y Admin inicial'}
       description="Datos comerciales, referencia fiscal y alta obligatoria del primer usuario Administrador (ADMIN_EMPRESA) con Google Auth."
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => onOpenChange(false)}
+            disabled={isSaving}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="empresa-sheet-form"
+            disabled={isSaving}
+          >
+            {isSaving
+              ? 'Guardando…'
+              : isEditing
+                ? 'Guardar cambios'
+                : 'Registrar empresa y Admin'}
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--s-4)]">
+      <form
+        id="empresa-sheet-form"
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-[var(--s-4)]"
+      >
         <fieldset className="flex flex-col gap-[var(--s-3)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
           <legend className="px-[var(--s-2)] text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
             1. Administrador inicial de la empresa (Google Auth)
@@ -501,23 +528,6 @@ export function EmpresaSheet({
             {errorMessage}
           </div>
         ) : null}
-
-        <div className="flex items-center justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
-          <Button
-            variant="secondary"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving
-              ? 'Guardando…'
-              : isEditing
-                ? 'Guardar cambios'
-                : 'Registrar empresa y Admin'}
-          </Button>
-        </div>
       </form>
     </Sheet>
   );

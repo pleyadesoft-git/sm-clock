@@ -305,8 +305,27 @@ export default function AdminAgentesPage() {
         onOpenChange={setSheetOpen}
         title="Código de Enrolamiento de Agente Local"
         description="El código expira automáticamente y solo puede canjearse una vez desde el sitio del cliente."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setSheetOpen(false)}
+            >
+              Cerrar
+            </Button>
+            <Button
+              type="submit"
+              form="agente-enrolar-sheet-form"
+              disabled={submitting}
+            >
+              {submitting ? 'Generando…' : 'Generar nuevo código'}
+            </Button>
+          </>
+        }
       >
         <form
+          id="agente-enrolar-sheet-form"
           onSubmit={(e) => void handleGenerateCode(e)}
           className="flex flex-col gap-[var(--s-4)]"
         >
@@ -382,19 +401,6 @@ export default function AdminAgentesPage() {
               )}
             </div>
           )}
-
-          <div className="flex justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setSheetOpen(false)}
-            >
-              Cerrar
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? 'Generando…' : 'Generar nuevo código'}
-            </Button>
-          </div>
         </form>
       </Sheet>
     </AppShell>

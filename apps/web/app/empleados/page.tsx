@@ -3,6 +3,10 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, Pencil, Plus, Users } from 'lucide-react';
+import {
+  EmpleadoCreateSchema,
+  EmpleadoUpdateSchema,
+} from '@sm-clock/contracts';
 import { PhotoUploader } from '@/components/features/empleados/photo-uploader';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
@@ -136,24 +140,38 @@ export default function EmpleadosPage() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    const rawPayload = {
+      ...(editing ? { id: editing.id } : {}),
+      codigo_empleado: codigoEmpleado,
+      nombre_completo: nombreCompleto,
+      credencial: credencial || null,
+      departamento: departamento || null,
+      puesto: puesto || null,
+      sucursal_id: sucursalId || null,
+      estatus_empleado: estatusEmpleado,
+    };
+
+    const parsed = editing
+      ? EmpleadoUpdateSchema.safeParse(rawPayload)
+      : EmpleadoCreateSchema.safeParse(rawPayload);
+
+    if (!parsed.success) {
+      toast({
+        title: 'Datos de empleado inválidos',
+        description:
+          parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados.',
+        variant: 'danger',
+      });
+      return;
+    }
+
     setSubmitting(true);
     try {
       const method = editing ? 'PATCH' : 'POST';
-      const payload = {
-        ...(editing ? { id: editing.id } : {}),
-        codigo_empleado: codigoEmpleado,
-        nombre_completo: nombreCompleto,
-        credencial: credencial || null,
-        departamento: departamento || null,
-        puesto: puesto || null,
-        sucursal_id: sucursalId || null,
-        estatus_empleado: estatusEmpleado,
-      };
-
       const res = await fetch('/api/empleados', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(parsed.data),
       });
 
       const json = (await res.json()) as {

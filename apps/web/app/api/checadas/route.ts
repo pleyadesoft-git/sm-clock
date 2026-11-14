@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { sanitizeSearchQuery } from '@sm-clock/contracts';
 import { requireAuthenticatedUser } from '@/lib/server/auth';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 const QueryParamsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(10).max(100).default(25),
-  search: z.string().trim().max(80).default(''),
+  search: z
+    .string()
+    .trim()
+    .max(80)
+    .transform((v) => sanitizeSearchQuery(v, 80))
+    .default(''),
   filtroMarca: z
     .enum(['TODAS', 'ENTRADA', 'SALIDA', 'AMBIGUAS'])
     .default('TODAS'),

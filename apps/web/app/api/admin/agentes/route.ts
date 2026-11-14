@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { AdminCreateEnrollmentCodeSchema } from '@sm-clock/contracts';
+import {
+  AdminCreateEnrollmentCodeSchema,
+  sanitizeSearchQuery,
+} from '@sm-clock/contracts';
 import { requireSuperAdmin } from '@/lib/server/auth';
 import { generateEnrollmentCode } from '@/lib/server/agent-auth';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
@@ -18,7 +21,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get('page') ?? '1'));
   const pageSize = Math.min(100, Math.max(10, Number(searchParams.get('pageSize') ?? '25')));
-  const search = (searchParams.get('search') ?? '').trim();
+  const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
   const admin = createSupabaseAdminClient();
   let query = admin
@@ -30,8 +33,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .order('created_at', { ascending: false });
 
   if (search) {
-    const safeSearch = search.replace(/[%_]/g, '');
-    query = query.ilike('nombre', `%${safeSearch}%`);
+    query = query.ilike('nombre', `%${search}%`);
   }
 
   const from = (page - 1) * pageSize;

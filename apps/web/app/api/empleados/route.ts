@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   EmpleadoCreateSchema,
   EmpleadoUpdateSchema,
+  sanitizeSearchQuery,
 } from '@sm-clock/contracts';
 import {
   recordAuditLog,
@@ -58,7 +59,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     100,
     Math.max(10, Number(searchParams.get('pageSize') ?? '25')),
   );
-  const search = (searchParams.get('search') ?? '').trim();
+  const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
   const estatus = searchParams.get('estatus') ?? '';
   const sucursalId = searchParams.get('sucursal_id') ?? '';
 
@@ -74,9 +75,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     .order('codigo_empleado', { ascending: true });
 
   if (search) {
-    const safe = search.replace(/[%_]/g, '');
     query = query.or(
-      `codigo_empleado.ilike.%${safe}%,nombre_completo.ilike.%${safe}%,departamento.ilike.%${safe}%`,
+      `codigo_empleado.ilike.%${search}%,nombre_completo.ilike.%${search}%,departamento.ilike.%${search}%`,
     );
   }
 
