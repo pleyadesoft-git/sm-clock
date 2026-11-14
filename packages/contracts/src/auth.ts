@@ -63,3 +63,25 @@ export const JwtAppMetadataSchema = z.object({
 });
 
 export type JwtAppMetadata = z.infer<typeof JwtAppMetadataSchema>;
+
+export const PasskeyRenameRequestSchema = z.object({
+  passkeyId: z.string().uuid('ID de llave de acceso inválido'),
+  friendlyName: z
+    .string()
+    .trim()
+    .min(2, 'El nombre del dispositivo debe tener al menos 2 caracteres')
+    .max(120, 'El nombre del dispositivo no puede exceder 120 caracteres'),
+});
+
+export type PasskeyRenameRequest = z.infer<typeof PasskeyRenameRequestSchema>;
+
+export const WebAuthnFactorEnrollSchema = z.object({
+  friendlyName: z
+    .string()
+    .trim()
+    .min(2, 'Ingresa un nombre descriptivo para tu dispositivo biométrico')
+    .max(120, 'El nombre no puede exceder 120 caracteres'),
+});
+
+export type WebAuthnFactorEnroll = z.infer<typeof WebAuthnFactorEnrollSchema>;
+

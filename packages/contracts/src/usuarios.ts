@@ -169,7 +169,7 @@ export const SmtpTestSendSchema = z.object({
 
 export type SmtpTestSendInput = z.infer<typeof SmtpTestSendSchema>;
 
-export interface TenantUserRow {
+export type TenantUserRow = {
   id: string;
   tipo_registro: 'USUARIO' | 'INVITACION';
   nombre_completo: string;
@@ -179,5 +179,49 @@ export interface TenantUserRow {
   auth_provider: 'GOOGLE' | 'EMAIL' | 'BOTH' | 'INVITACION';
   created_at: string;
   expira_en: string | null;
-}
+};
+
+export const CreateSuperAdminRequestSchema = z.object({
+  nombre_completo: z
+    .string()
+    .trim()
+    .min(2, 'El nombre completo debe tener al menos 2 caracteres')
+    .max(150, 'El nombre completo no puede exceder 150 caracteres'),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email('Ingresa un correo electrónico válido vinculado a Google Auth')
+    .max(150),
+});
+
+export type CreateSuperAdminRequest = z.infer<
+  typeof CreateSuperAdminRequestSchema
+>;
+
+export const UpdateSuperAdminRequestSchema = z
+  .object({
+    activo: z.boolean().optional(),
+    nombre_completo: z.string().trim().min(2).max(150).optional(),
+  })
+  .refine(
+    (data) => data.activo !== undefined || data.nombre_completo !== undefined,
+    { message: 'Especifica al menos un campo a actualizar' },
+  );
+
+export type UpdateSuperAdminRequest = z.infer<
+  typeof UpdateSuperAdminRequestSchema
+>;
+
+export type SuperAdminRow = {
+  id: string;
+  nombre_completo: string;
+  email: string;
+  activo: boolean;
+  auth_provider: AuthProvider;
+  ultimo_acceso_en: string | null;
+  created_at: string;
+  es_bootstrap: boolean;
+};
+
 

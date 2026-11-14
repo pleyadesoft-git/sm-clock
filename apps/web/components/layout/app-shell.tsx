@@ -28,6 +28,7 @@ export interface NavItem {
 const ADMIN_NAV_ITEMS: readonly NavItem[] = [
   { href: '/admin/empresas', label: 'Empresas', icon: Building2 },
   { href: '/admin/agentes', label: 'Agentes', icon: Radio },
+  { href: '/admin/administradores', label: 'Super-Admins', icon: ShieldCheck },
   { href: '/dashboard', label: 'Dashboard Vivo', icon: Activity },
   { href: '/empleados', label: 'Empleados', icon: Users },
   { href: '/sucursales', label: 'Sucursales', icon: Clock },

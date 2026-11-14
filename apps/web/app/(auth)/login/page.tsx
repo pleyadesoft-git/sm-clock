@@ -3,12 +3,17 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Clock, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
+import { Clock, Eye, EyeOff, Fingerprint, Lock, Mail } from 'lucide-react';
 import {
   LoginRequestSchema,
   roleRequiresMfa,
   UserRoleSchema,
 } from '@sm-clock/contracts';
+import {
+  authenticateWithPasskey,
+  detectWebAuthnCapabilities,
+} from '@/lib/auth/webauthn-client';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -30,6 +35,84 @@ function LoginFormContent() {
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
+  const [isPasskeyLoading, setIsPasskeyLoading] = React.useState(false);
+  const [webauthnAvailable, setWebauthnAvailable] = React.useState(false);
+  const [biometricPlatformAvailable, setBiometricPlatformAvailable] =
+    React.useState(false);
+
+  const conditionalAbortRef = React.useRef<AbortController | null>(null);
+
+  const completePostSignInRedirect = React.useCallback(
+    async (user: User) => {
+      const supabase = createSupabaseBrowserClient();
+      const verifyRes = await fetch('/api/auth/me');
+      if (!verifyRes.ok) {
+        const errBody = (await verifyRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        await supabase.auth.signOut();
+        setErrorMessage(
+          errBody.error ??
+            'No cuentas con una invitación activa para ingresar a la aplicación.',
+        );
+        return;
+      }
+
+      const verifyJson = (await verifyRes.json()) as {
+        data?: { rol?: unknown };
+      };
+      const rawRol = verifyJson.data?.rol ?? user.app_metadata?.['rol'];
+      const rolResult = UserRoleSchema.safeParse(rawRol);
+
+      if (rolResult.success && roleRequiresMfa(rolResult.data)) {
+        const { data: aalData } =
+          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+          router.push('/mfa');
+          return;
+        }
+      }
+
+      if (rolResult.success && rolResult.data === 'SUPER_ADMIN') {
+        router.push('/admin/empresas');
+      } else {
+        router.push('/dashboard');
+      }
+    },
+    [router],
+  );
+
+  const startConditionalAutofill = React.useCallback(async () => {
+    const caps = await detectWebAuthnCapabilities();
+    setWebauthnAvailable(caps.webauthnSupported);
+    setBiometricPlatformAvailable(caps.passkeyPlatformAuthenticator);
+
+    if (!caps.conditionalGet) {
+      return;
+    }
+
+    conditionalAbortRef.current?.abort();
+    const controller = new AbortController();
+    conditionalAbortRef.current = controller;
+
+    const supabase = createSupabaseBrowserClient();
+    const result = await authenticateWithPasskey({
+      supabase,
+      signal: controller.signal,
+      mediation: 'conditional',
+    });
+
+    if (result.ok) {
+      await completePostSignInRedirect(result.user);
+    }
+  }, [completePostSignInRedirect]);
+
+  React.useEffect(() => {
+    void startConditionalAutofill();
+    return () => {
+      conditionalAbortRef.current?.abort();
+    };
+  }, [startConditionalAutofill]);
 
   React.useEffect(() => {
     const err = searchParams.get('error');
@@ -50,6 +133,7 @@ function LoginFormContent() {
 
   const handleGoogleLogin = async () => {
     setErrorMessage(null);
+    conditionalAbortRef.current?.abort();
     setIsGoogleLoading(true);
     try {
       const supabase = createSupabaseBrowserClient();
@@ -57,6 +141,9 @@ function LoginFormContent() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/api/auth/callback`,
+          queryParams: {
+            prompt: 'select_account',
+          },
         },
       });
       if (error) {
@@ -66,6 +153,38 @@ function LoginFormContent() {
     } catch {
       setErrorMessage('Error de conexión con el proveedor Google Auth.');
       setIsGoogleLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setErrorMessage(null);
+    // Cancelar cualquier mediación condicional activa para evitar colisión de prompts WebAuthn
+    conditionalAbortRef.current?.abort();
+    const explicitController = new AbortController();
+    conditionalAbortRef.current = explicitController;
+
+    setIsPasskeyLoading(true);
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const result = await authenticateWithPasskey({
+        supabase,
+        signal: explicitController.signal,
+      });
+
+      if (!result.ok) {
+        if (!result.cancelled) {
+          setErrorMessage(result.message);
+        }
+        // Rearmar sugerencias Conditional UI tras cancelar el diálogo explícito
+        void startConditionalAutofill();
+        return;
+      }
+
+      await completePostSignInRedirect(result.user);
+    } catch {
+      setErrorMessage('Error al verificar la llave biométrica.');
+    } finally {
+      setIsPasskeyLoading(false);
     }
   };
 
@@ -81,6 +200,7 @@ function LoginFormContent() {
       return;
     }
 
+    conditionalAbortRef.current?.abort();
     setIsSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
@@ -94,40 +214,7 @@ function LoginFormContent() {
         return;
       }
 
-      // Validar en servidor que exista invitación/perfil activo en el tenant
-      const verifyRes = await fetch('/api/auth/me');
-      if (!verifyRes.ok) {
-        const errBody = (await verifyRes.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        await supabase.auth.signOut();
-        setErrorMessage(
-          errBody.error ??
-            'No cuentas con una invitación activa para ingresar a la aplicación.',
-        );
-        return;
-      }
-
-      const verifyJson = (await verifyRes.json()) as {
-        data?: { rol?: unknown };
-      };
-      const rawRol = verifyJson.data?.rol ?? data.user.app_metadata?.['rol'];
-      const rolResult = UserRoleSchema.safeParse(rawRol);
-
-      if (rolResult.success && roleRequiresMfa(rolResult.data)) {
-        const { data: aalData } =
-          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-        if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
-          router.push('/mfa');
-          return;
-        }
-      }
-
-      if (rolResult.success && rolResult.data === 'SUPER_ADMIN') {
-        router.push('/admin/empresas');
-      } else {
-        router.push('/dashboard');
-      }
+      await completePostSignInRedirect(data.user);
     } catch {
       setErrorMessage('Error de conexión al servidor de autenticación.');
     } finally {
@@ -141,9 +228,11 @@ function LoginFormContent() {
         <div className="mb-[var(--s-2)] flex size-12 items-center justify-center rounded-[var(--r-lg)] bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--shadow-1)]">
           <Clock className="size-6" strokeWidth={1.75} aria-hidden="true" />
         </div>
-        <CardTitle>Iniciar sesión en SM Clock</CardTitle>
-        <CardDescription>
-          Plataforma SaaS de Control de Asistencia · Acceso exclusivo con invitación
+        <CardTitle id="login-title-heading">
+          Iniciar sesión en SM Clock
+        </CardTitle>
+        <CardDescription id="login-title-description">
+          Plataforma SaaS de Control de Asistencia · Acceso con Gmail, Biométricos o Contraseña
         </CardDescription>
       </CardHeader>
 
@@ -157,7 +246,9 @@ function LoginFormContent() {
               id="email"
               name="email"
               type="email"
-              autoComplete="username"
+              autoComplete="username webauthn"
+              aria-describedby="login-title-description"
+              autoFocus
               spellCheck={false}
               enterKeyHint="next"
               required
@@ -239,23 +330,50 @@ function LoginFormContent() {
         <div className="relative flex items-center justify-center py-[var(--s-1)]">
           <div className="w-full border-t border-[var(--separator)]" />
           <span className="bg-[var(--surface)] px-[var(--s-3)] text-xs font-medium text-[var(--text-2)]">
-            o ingresa con
+            o ingresa sin contraseña
           </span>
           <div className="w-full border-t border-[var(--separator)]" />
         </div>
 
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={isGoogleLoading}
-          onClick={handleGoogleLogin}
-          className="w-full"
-        >
-          <Mail className="size-4" strokeWidth={1.75} aria-hidden="true" />
-          <span>
-            {isGoogleLoading ? 'Conectando con Google…' : 'Continuar con Google Auth'}
-          </span>
-        </Button>
+        <div className="flex flex-col gap-[var(--s-2)]">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={isGoogleLoading || isPasskeyLoading}
+            onClick={() => void handleGoogleLogin()}
+            className="w-full"
+          >
+            <Mail className="size-4" strokeWidth={1.75} aria-hidden="true" />
+            <span>
+              {isGoogleLoading
+                ? 'Conectando con Google…'
+                : 'Continuar con Google Auth'}
+            </span>
+          </Button>
+
+          {webauthnAvailable ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isPasskeyLoading || isGoogleLoading}
+              onClick={() => void handlePasskeyLogin()}
+              className="w-full"
+            >
+              <Fingerprint
+                className="size-4 text-[var(--accent)]"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+              <span>
+                {isPasskeyLoading
+                  ? 'Esperando lectura biométrica…'
+                  : biometricPlatformAvailable
+                    ? 'Ingresar con Biométrico / Passkey'
+                    : 'Ingresar con Llave de Seguridad (WebAuthn)'}
+              </span>
+            </Button>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

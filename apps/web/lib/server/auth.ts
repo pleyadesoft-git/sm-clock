@@ -36,6 +36,84 @@ const DEV_FALLBACK_CONTEXT: AuthenticatedContext = {
 };
 
 /**
+ * Obtiene la lista blanca de correos autorizados como SUPER_ADMIN fundadores
+ * desde la variable de entorno `SUPER_ADMIN_BOOTSTRAP_EMAILS` (separada por comas).
+ */
+export function getBootstrapSuperAdminEmails(): string[] {
+  const raw = process.env['SUPER_ADMIN_BOOTSTRAP_EMAILS'] ?? '';
+  return raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+}
+
+export function isBootstrapSuperAdminEmail(email: string): boolean {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+  return getBootstrapSuperAdminEmails().includes(normalized);
+}
+
+/**
+ * Si el correo autenticado con Google pertenece a `SUPER_ADMIN_BOOTSTRAP_EMAILS`,
+ * aprovisiona o reactiva automáticamente su perfil `SUPER_ADMIN` (`tenant_id = null`).
+ */
+export async function claimBootstrapSuperAdminForUser(params: {
+  userId: string;
+  email: string;
+  fullNameFallback?: string | null;
+}): Promise<{ rol: 'SUPER_ADMIN'; tenantId: null } | null> {
+  const normalizedEmail = params.email.trim().toLowerCase();
+  if (!isBootstrapSuperAdminEmail(normalizedEmail)) {
+    return null;
+  }
+
+  const adminClient = createSupabaseServiceClient();
+  const nowIso = new Date().toISOString();
+  const fullName =
+    params.fullNameFallback?.trim() ||
+    normalizedEmail.split('@')[0] ||
+    'Super Admin SaaS';
+
+  const { error: upsertError } = await adminClient
+    .from('perfiles_usuarios')
+    .upsert(
+      {
+        id: params.userId,
+        tenant_id: null,
+        nombre_completo: fullName,
+        email: normalizedEmail,
+        rol: 'SUPER_ADMIN',
+        auth_provider: 'GOOGLE',
+        activo: true,
+        ultimo_acceso_en: nowIso,
+      },
+      { onConflict: 'id' },
+    );
+
+  if (upsertError) {
+    return null;
+  }
+
+  await adminClient.auth.admin.updateUserById(params.userId, {
+    app_metadata: {
+      rol: 'SUPER_ADMIN',
+    },
+  });
+
+  await recordAuditLog({
+    tenantId: null,
+    actorId: params.userId,
+    accion: 'SUPER_ADMIN_BOOTSTRAP_LOGIN',
+    detalle: {
+      email: normalizedEmail,
+      auth_provider: 'GOOGLE',
+    },
+  });
+
+  return { rol: 'SUPER_ADMIN', tenantId: null };
+}
+
+/**
  * Si el usuario autenticado aún no tiene fila en `perfiles_usuarios`,
  * verifica si tiene una invitación `PENDIENTE` vigente en `invitaciones_usuarios`
  * para su correo electrónico y la activa automáticamente.
@@ -183,26 +261,39 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
       });
     }
   } else {
-    const claimed = await claimPendingInvitationForUser({
+    const fullNameFallback =
+      typeof user.user_metadata?.['full_name'] === 'string'
+        ? user.user_metadata['full_name']
+        : null;
+
+    const bootstrappedSuperAdmin = await claimBootstrapSuperAdminForUser({
       userId: user.id,
       email: user.email ?? '',
-      fullNameFallback:
-        typeof user.user_metadata?.['full_name'] === 'string'
-          ? user.user_metadata['full_name']
-          : null,
-      authProvider:
-        user.app_metadata?.['provider'] === 'google' ? 'GOOGLE' : 'EMAIL',
+      fullNameFallback,
     });
 
-    if (!claimed) {
-      throw new AuthError(
-        'No existe una invitación activa para tu correo en esta organización. Solicita acceso al administrador.',
-        403,
-      );
-    }
+    if (bootstrappedSuperAdmin) {
+      rol = bootstrappedSuperAdmin.rol;
+      tenantId = bootstrappedSuperAdmin.tenantId;
+    } else {
+      const claimed = await claimPendingInvitationForUser({
+        userId: user.id,
+        email: user.email ?? '',
+        fullNameFallback,
+        authProvider:
+          user.app_metadata?.['provider'] === 'google' ? 'GOOGLE' : 'EMAIL',
+      });
 
-    rol = claimed.rol;
-    tenantId = claimed.tenantId;
+      if (!claimed) {
+        throw new AuthError(
+          'No existe una invitación activa para tu correo en esta organización. Solicita acceso al administrador.',
+          403,
+        );
+      }
+
+      rol = claimed.rol;
+      tenantId = claimed.tenantId;
+    }
   }
 
   const { data: aalData, error: aalError } =

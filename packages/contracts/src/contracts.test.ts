@@ -4,8 +4,10 @@ import {
   JwtAppMetadataSchema,
   LoginRequestSchema,
   MfaVerifyRequestSchema,
+  PasskeyRenameRequestSchema,
   ResetPasswordRequestSchema,
   roleRequiresMfa,
+  WebAuthnFactorEnrollSchema,
 } from './auth';
 import {
   TenantCreateSchema,
@@ -14,9 +16,11 @@ import {
 } from './tenant';
 import {
   AcceptInvitationPasswordRequestSchema,
+  CreateSuperAdminRequestSchema,
   InviteUserRequestSchema,
   SmtpConfigUpsertSchema,
   SmtpTestSendSchema,
+  UpdateSuperAdminRequestSchema,
 } from './usuarios';
 
 describe('@sm-clock/contracts — Auth, Tenant & Usuarios schemas', () => {
@@ -201,6 +205,44 @@ describe('@sm-clock/contracts — Auth, Tenant & Usuarios schemas', () => {
     if (parsed.success) {
       expect(parsed.data.destinatario_prueba).toBe('admin@empresa.mx');
     }
+  });
+
+  it('validates PasskeyRenameRequestSchema and WebAuthnFactorEnrollSchema', () => {
+    expect(
+      PasskeyRenameRequestSchema.safeParse({
+        passkeyId: '550e8400-e29b-41d4-a716-446655440000',
+        friendlyName: 'MacBook Pro Touch ID',
+      }).success,
+    ).toBe(true);
+
+    expect(
+      PasskeyRenameRequestSchema.safeParse({
+        passkeyId: 'not-a-uuid',
+        friendlyName: 'A',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      WebAuthnFactorEnrollSchema.safeParse({
+        friendlyName: 'iPhone Face ID',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('validates CreateSuperAdminRequestSchema and UpdateSuperAdminRequestSchema', () => {
+    const validCreate = CreateSuperAdminRequestSchema.safeParse({
+      nombre_completo: 'Fundador SaaS',
+      email: 'Socio@SmClock.mx ',
+    });
+    expect(validCreate.success).toBe(true);
+    if (validCreate.success) {
+      expect(validCreate.data.email).toBe('socio@smclock.mx');
+    }
+
+    expect(UpdateSuperAdminRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      UpdateSuperAdminRequestSchema.safeParse({ activo: false }).success,
+    ).toBe(true);
   });
 });
 

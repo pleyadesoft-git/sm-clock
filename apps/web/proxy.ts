@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   '/invitacion',
   '/recuperar-contrasena',
   '/restablecer-contrasena',
+  '/auth/callback',
   '/api/invitaciones/verificar',
   '/api/invitaciones/aceptar',
   '/api/auth/callback',

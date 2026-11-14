@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { roleRequiresMfa, UserRoleSchema } from '@sm-clock/contracts';
 import {
+  claimBootstrapSuperAdminForUser,
   claimPendingInvitationForUser,
   recordAuditLog,
 } from '@/lib/server/auth';
@@ -130,14 +131,32 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.redirect(new URL(dest, url.origin));
   }
 
-  // 3. Intentar reclamar invitación PENDIENTE por correo electrónico
+  const fullNameFallback =
+    typeof user.user_metadata?.['full_name'] === 'string'
+      ? user.user_metadata['full_name']
+      : null;
+
+  // 3. Verificar si el correo pertenece a la lista de bootstrap SUPER_ADMIN_BOOTSTRAP_EMAILS
+  const bootstrappedSuperAdmin = await claimBootstrapSuperAdminForUser({
+    userId: user.id,
+    email: normalizedEmail,
+    fullNameFallback,
+  });
+
+  if (bootstrappedSuperAdmin) {
+    const { data: aalData } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+      return NextResponse.redirect(new URL('/mfa', url.origin));
+    }
+    return NextResponse.redirect(new URL('/admin/empresas', url.origin));
+  }
+
+  // 4. Intentar reclamar invitación PENDIENTE por correo electrónico
   const claimed = await claimPendingInvitationForUser({
     userId: user.id,
     email: normalizedEmail,
-    fullNameFallback:
-      typeof user.user_metadata?.['full_name'] === 'string'
-        ? user.user_metadata['full_name']
-        : null,
+    fullNameFallback,
     authProvider: 'GOOGLE',
   });
 

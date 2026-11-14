@@ -28,6 +28,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useToast } from '@/components/ui/toast';
+import { PasskeySecurityCard } from '@/components/features/auth/passkey-security-card';
 
 interface SmtpConfigResponse {
   data: {
@@ -420,6 +421,8 @@ export default function ConfiguracionPage() {
             )}
           </CardContent>
         </Card>
+
+        <PasskeySecurityCard />
       </div>
     </AppShell>
   );
