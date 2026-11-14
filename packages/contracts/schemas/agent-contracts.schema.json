@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SMClockAgentContracts",
+  "definitions": {
+    "AgentEnrollRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "codigo_enrolamiento": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 128
+        },
+        "nombre_agente": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "hostname": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "codigo_enrolamiento",
+        "nombre_agente",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "AgentEnrollResponse": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "agente_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "credencial_token": {
+          "type": "string",
+          "minLength": 32
+        },
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "zona_horaria": {
+          "type": "string",
+          "minLength": 3
+        }
+      },
+      "required": [
+        "agente_id",
+        "credencial_token",
+        "tenant_id",
+        "zona_horaria"
+      ],
+      "additionalProperties": false
+    },
+    "AgentHeartbeat": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "ts_local_agente": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 45
+        },
+        "cola_pendiente": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "fuentes_estado": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fuente_id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "conectado": {
+                "type": "boolean"
+              },
+              "ultimo_error": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "fuente_id",
+              "conectado"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "version",
+        "ts_local_agente",
+        "cola_pendiente",
+        "fuentes_estado"
+      ],
+      "additionalProperties": false
+    },
+    "AgentChecadasBatch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "lote_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "checadas": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fuente_id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "codigo_empleado": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 30
+              },
+              "ts_utc": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "ts_dispositivo_local": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}$"
+              },
+              "ambigua": {
+                "default": false,
+                "type": "boolean"
+              },
+              "tipo_marca": {
+                "default": "CHECADA",
+                "type": "string",
+                "enum": [
+                  "ENTRADA",
+                  "SALIDA",
+                  "CHECADA"
+                ]
+              },
+              "tipo_verificacion": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "HUELLA",
+                      "ROSTRO",
+                      "TARJETA",
+                      "API",
+                      "PIN"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "fuente_id",
+              "codigo_empleado",
+              "ts_utc",
+              "ts_dispositivo_local",
+              "ambigua",
+              "tipo_marca"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "lote_id",
+        "checadas"
+      ],
+      "additionalProperties": false
+    },
+    "AgentSignedHeaders": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "x-agent-id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "x-agent-timestamp": {
+          "type": "string",
+          "pattern": "^\\d{10,13}$"
+        },
+        "x-agent-nonce": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        },
+        "x-agent-signature": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "x-agent-id",
+        "x-agent-timestamp",
+        "x-agent-nonce",
+        "x-agent-signature"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
