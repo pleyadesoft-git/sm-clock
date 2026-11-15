@@ -1,0 +1,6 @@
+"User ID","Name","Time","State","Verify Type","WorkCode"
+"1001","Juan Perez Hernandez","2026-11-14 08:01:23","Check-In","Face","0"
+"1002","Maria Lopez Garcia","2026-11-14 08:03:45","Check-In","Fingerprint","0"
+"1003","Carlos Ramirez Diaz","2026-11-14 08:05:12","Check-In","Card","0"
+"1003","Carlos Ramirez Diaz","2026-11-14 17:02:11","Check-Out","Card","0"
+"1001","Juan Perez Hernandez","2026-11-14 17:05:30","Check-Out","Face","0"

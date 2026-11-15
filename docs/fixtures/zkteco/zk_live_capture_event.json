@@ -1,0 +1,9 @@
+{
+  "event_type": "EF_ATTLOG",
+  "event_code": 1,
+  "user_id": "1001",
+  "verify_type": 15,
+  "verify_state": 0,
+  "timestamp": "2026-11-14 08:01:23",
+  "work_code": 0
+}

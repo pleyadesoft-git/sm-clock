@@ -1,0 +1,8 @@
+NumeroEmpleado,NombreCompleto,Fecha,Hora,TipoChecada,CodigoIncidencia,MinutosRetardo,HorasTrabajadas,HorasExtra,Dispositivo,NumeroSerie,Departamento,Puesto,Turno,Estatus
+1001,Juan Perez Hernandez,2026-11-14,08:01:23,Entrada,REG,0,0.00,0.00,Checador Entrada Planta,SN-ZK4370-01,Produccion,Operador,Matutino 08:00-17:00,Aceptada
+1002,Maria Lopez Garcia,2026-11-14,08:22:15,Entrada,RT,22,0.00,0.00,Checador Entrada Planta,SN-ZK4370-01,Produccion,Operador,Matutino 08:00-17:00,Aceptada
+1003,Carlos Ramirez Diaz,2026-11-14,08:05:12,Entrada,REG,0,0.00,0.00,Checador Almacen,SN-HIK341-02,Almacen,Montacarguista,Matutino 08:00-17:00,Aceptada
+1004,Sofia Castro Morales,2026-11-14,00:00:00,Sin Checada,FALTA,0,0.00,0.00,N/A,N/A,Calidad,Inspector,Matutino 08:00-17:00,Injustificada
+1005,Roberto Sanchez Gomez,2026-11-14,08:00:00,Entrada,RDS,0,8.00,0.00,Checador Entrada Planta,SN-ZK4370-01,Mantenimiento,Tecnico,Descanso Obligatorio,Aceptada
+1003,Carlos Ramirez Diaz,2026-11-14,17:02:11,Salida,REG,0,8.00,0.00,Checador Almacen,SN-HIK341-02,Almacen,Montacarguista,Matutino 08:00-17:00,Aceptada
+1001,Juan Perez Hernandez,2026-11-14,19:05:30,Salida,REG,0,10.00,2.00,Checador Entrada Planta,SN-ZK4370-01,Produccion,Operador,Matutino 08:00-17:00,Aceptada

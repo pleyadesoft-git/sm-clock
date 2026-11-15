@@ -1,0 +1,8 @@
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkBlbXByZXNhLm14Iiwicm9sZSI6IkNvbXBhbnlBZG1pbiIsImNvbXBhbnlJZCI6IjEyMzQ1IiwiaWF0IjoxNzk0NTg5NDAwLCJleHAiOjE3OTQ2NzU4MDB9.s7z_D0t7xK3x6V1n3_TA_Cloud_Mock_Signature_Token",
+  "token_type": "bearer",
+  "expires_in": 86400,
+  "userName": "admin@empresa.mx",
+  ".issued": "Sat, 14 Nov 2026 16:00:00 GMT",
+  ".expires": "Sun, 15 Nov 2026 16:00:00 GMT"
+}

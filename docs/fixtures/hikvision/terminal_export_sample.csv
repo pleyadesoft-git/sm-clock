@@ -1,0 +1,6 @@
+No.,Time,Card No.,Employee No.,Name,Department,Device Name,Event Point,Event Type,Verification Mode,Attendance Status
+1,2026-11-14 08:01:23,,1001,Juan Perez Hernandez,Produccion,Checador_Planta_Tijuana,Puerta 1,Autenticacion Facial Exitosa,Rostro,Entrada
+2,2026-11-14 08:03:45,,1002,Maria Lopez Garcia,Produccion,Checador_Planta_Tijuana,Puerta 1,Autenticacion por Huella Exitosa,Huella,Entrada
+3,2026-11-14 08:05:12,0008459201,1003,Carlos Ramirez Diaz,Almacen,Checador_Planta_Tijuana,Puerta 1,Tarjeta Legal Pasada,Tarjeta,Entrada
+4,2026-11-14 17:02:11,0008459201,1003,Carlos Ramirez Diaz,Almacen,Checador_Planta_Tijuana,Puerta 1,Tarjeta Legal Pasada,Tarjeta,Salida
+5,2026-11-14 17:05:30,,1001,Juan Perez Hernandez,Produccion,Checador_Planta_Tijuana,Puerta 1,Autenticacion Facial Exitosa,Rostro,Salida

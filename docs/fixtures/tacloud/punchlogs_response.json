@@ -1,0 +1,78 @@
+{
+  "totalRegistros": 5,
+  "pagina": 1,
+  "tamanoPagina": 50,
+  "fechaConsultaUtc": "2026-11-14T21:40:00Z",
+  "datos": [
+    {
+      "id": 98451,
+      "codigoEmpleado": "1001",
+      "nombre": "Juan Perez Hernandez",
+      "fechaHoraLocal": "2026-11-14 08:01:23",
+      "fechaHoraUtc": "2026-11-14T16:01:23Z",
+      "tipoChecada": "ENTRADA",
+      "metodoVerificacion": "ROSTRO",
+      "dispositivoSerial": "SN-ZK4370-01",
+      "dispositivoNombre": "Checador Entrada Planta",
+      "codigoIncidencia": "REG",
+      "minutosRetardo": 0,
+      "origen": "TACLOUD"
+    },
+    {
+      "id": 98452,
+      "codigoEmpleado": "1002",
+      "nombre": "Maria Lopez Garcia",
+      "fechaHoraLocal": "2026-11-14 08:22:15",
+      "fechaHoraUtc": "2026-11-14T16:22:15Z",
+      "tipoChecada": "ENTRADA",
+      "metodoVerificacion": "HUELLA",
+      "dispositivoSerial": "SN-ZK4370-01",
+      "dispositivoNombre": "Checador Entrada Planta",
+      "codigoIncidencia": "RT",
+      "minutosRetardo": 22,
+      "origen": "TACLOUD"
+    },
+    {
+      "id": 98453,
+      "codigoEmpleado": "1003",
+      "nombre": "Carlos Ramirez Diaz",
+      "fechaHoraLocal": "2026-11-14 08:05:12",
+      "fechaHoraUtc": "2026-11-14T16:05:12Z",
+      "tipoChecada": "ENTRADA",
+      "metodoVerificacion": "TARJETA",
+      "dispositivoSerial": "SN-HIK341-02",
+      "dispositivoNombre": "Checador Almacen",
+      "codigoIncidencia": "REG",
+      "minutosRetardo": 0,
+      "origen": "TACLOUD"
+    },
+    {
+      "id": 98454,
+      "codigoEmpleado": "1003",
+      "nombre": "Carlos Ramirez Diaz",
+      "fechaHoraLocal": "2026-11-14 17:02:11",
+      "fechaHoraUtc": "2026-11-15T01:02:11Z",
+      "tipoChecada": "SALIDA",
+      "metodoVerificacion": "TARJETA",
+      "dispositivoSerial": "SN-HIK341-02",
+      "dispositivoNombre": "Checador Almacen",
+      "codigoIncidencia": "REG",
+      "minutosRetardo": 0,
+      "origen": "TACLOUD"
+    },
+    {
+      "id": 98455,
+      "codigoEmpleado": "1001",
+      "nombre": "Juan Perez Hernandez",
+      "fechaHoraLocal": "2026-11-14 19:05:30",
+      "fechaHoraUtc": "2026-11-15T03:05:30Z",
+      "tipoChecada": "SALIDA",
+      "metodoVerificacion": "ROSTRO",
+      "dispositivoSerial": "SN-ZK4370-01",
+      "dispositivoNombre": "Checador Entrada Planta",
+      "codigoIncidencia": "REG",
+      "minutosRetardo": 0,
+      "origen": "TACLOUD"
+    }
+  ]
+}
