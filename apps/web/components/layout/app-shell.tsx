@@ -6,11 +6,15 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Building2,
+  ChevronsUpDown,
   Clock,
   Fingerprint,
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Menu,
+  PanelLeft,
+  PanelLeftClose,
   Radio,
   Settings,
   ShieldAlert,
@@ -19,6 +23,7 @@ import {
   UserCircle,
   UserPlus,
   Users,
+  X,
 } from 'lucide-react';
 import {
   canRoleAccessPath,
@@ -87,9 +92,212 @@ function getInitials(name: string, email: string): string {
   return (source.slice(0, 2) || 'US').toUpperCase();
 }
 
+interface UserNavMenuProps {
+  userSummary: HeaderUserSummary;
+  showAvatarImage: boolean;
+  onAvatarError: () => void;
+  initials: string;
+  roleBadgeLabel: string | null;
+  signingOut: boolean;
+  onSignOut: () => void;
+  onItemClick?: () => void;
+}
+
+function UserNavMenu({
+  userSummary,
+  showAvatarImage,
+  onAvatarError,
+  initials,
+  roleBadgeLabel,
+  signingOut,
+  onSignOut,
+  onItemClick,
+}: UserNavMenuProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    function handleOutsideClick(event: MouseEvent) {
+      if (
+        containerRef.current &&
+        event.target instanceof Node &&
+        !containerRef.current.contains(event.target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleAction = () => {
+    setIsOpen(false);
+    onItemClick?.();
+  };
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <AnimatePresence>
+        {isOpen ? (
+          <motion.div
+            role="menu"
+            aria-label="Opciones de cuenta y seguridad del usuario"
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+            className="absolute bottom-full left-0 right-0 z-50 mb-[var(--s-2)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
+          >
+            {roleBadgeLabel ? (
+              <div className="flex items-center border-b border-[var(--separator)] px-[var(--s-2)] pb-[var(--s-2)]">
+                <Badge
+                  variant={
+                    userSummary.rol === 'OPERADOR' ? 'info' : 'accent'
+                  }
+                >
+                  {roleBadgeLabel}
+                </Badge>
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-[var(--s-1)] py-[var(--s-2)]">
+              <Link
+                href="/perfil#credenciales"
+                role="menuitem"
+                onClick={handleAction}
+                className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
+              >
+                <UserCheck
+                  className="size-4 shrink-0 text-[var(--accent)]"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <div className="flex flex-col">
+                  <span>Datos principales (Nombre y Email)</span>
+                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                    Editar perfil e información de cuenta
+                  </span>
+                </div>
+              </Link>
+
+              <Link
+                href="/perfil#credenciales"
+                role="menuitem"
+                onClick={handleAction}
+                className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
+              >
+                <KeyRound
+                  className="size-4 shrink-0 text-[var(--accent)]"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <div className="flex flex-col">
+                  <span>Usuario y Contraseña</span>
+                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                    Configurar o cambiar tu contraseña
+                  </span>
+                </div>
+              </Link>
+
+              <Link
+                href="/perfil#biometricos"
+                role="menuitem"
+                onClick={handleAction}
+                className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
+              >
+                <Fingerprint
+                  className="size-4 shrink-0 text-[var(--accent)]"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <div className="flex flex-col">
+                  <span>Biométricos y WebAuthn</span>
+                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                    Passkeys, Touch ID, Face ID y llaves 2FA
+                  </span>
+                </div>
+              </Link>
+            </div>
+
+            <div className="border-t border-[var(--separator)] pt-[var(--s-2)]">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={signingOut}
+                onClick={() => {
+                  setIsOpen(false);
+                  onSignOut();
+                }}
+                className="flex w-full items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-left text-xs font-semibold text-[var(--danger)] transition-colors hover:bg-[var(--surface-2)] cursor-pointer"
+              >
+                <LogOut
+                  className="size-4 shrink-0"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
+                <span>
+                  {signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+                </span>
+              </button>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <button
+        type="button"
+        aria-label="Abrir menú de perfil y credenciales de usuario"
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="flex min-h-[var(--touch-min)] w-full items-center gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-2)] text-left transition-colors hover:bg-[var(--surface)] active:scale-[0.98] cursor-pointer"
+      >
+        <span className="relative flex size-9 min-h-[36px] min-w-[36px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--text-on-accent)] shadow-[var(--shadow-1)]">
+          {showAvatarImage && userSummary.avatarUrl ? (
+            <img
+              src={userSummary.avatarUrl}
+              alt="Avatar de usuario"
+              referrerPolicy="no-referrer"
+              onError={onAvatarError}
+              className="size-full rounded-full object-cover"
+            />
+          ) : (
+            <span aria-hidden="true">{initials}</span>
+          )}
+        </span>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-xs font-bold text-[var(--text)]">
+            {userSummary.nombreCompleto}
+          </span>
+          {userSummary.email ? (
+            <span className="truncate text-[11px] text-[var(--text-2)]">
+              {userSummary.email}
+            </span>
+          ) : null}
+        </div>
+        <ChevronsUpDown
+          className="size-4 shrink-0 text-[var(--text-2)]"
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
+      </button>
+    </div>
+  );
+}
+
 /**
  * Layout responsivo estilo iOS (`docs/UI-UX-IOS.md` §2.4 y §7) con Browser Routing Guard
- * y Avatar de Usuario en la esquina superior derecha (fotografía Google OAuth + menú de credenciales y cierre de sesión).
+ * y Avatar de Usuario en la parte inferior del menú de navegación.
  */
 export function AppShell({
   title,
@@ -115,9 +323,7 @@ export function AppShell({
     avatarUrl: null,
   });
   const [avatarLoadError, setAvatarLoadError] = React.useState(false);
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
-  const menuContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     if (userRole) {
@@ -220,39 +426,156 @@ export function AppShell({
     };
   }, [mode, pathname, router, userRole]);
 
-  React.useEffect(() => {
-    if (!menuOpen) return;
-    function handleOutsideClick(event: MouseEvent) {
-      if (
-        menuContainerRef.current &&
-        event.target instanceof Node &&
-        !menuContainerRef.current.contains(event.target)
-      ) {
-        setMenuOpen(false);
-      }
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [menuOpen]);
-
   async function handleSignOut() {
     setSigningOut(true);
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
-      setMenuOpen(false);
       router.replace('/login?logged_out=1');
     } finally {
       setSigningOut(false);
+    }
+  }
+
+  // Estado y persistencia del menú lateral en escritorio
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = React.useState<boolean>(true);
+  // Estado del cajón de navegación para móviles y tabletas
+  const [mobileDrawerOpen, setMobileDrawerOpen] = React.useState<boolean>(false);
+  // Detección reactiva de pantalla móvil o tablet (< 1024px)
+  const [isMobileScreen, setIsMobileScreen] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    function checkMobile() {
+      setIsMobileScreen(window.innerWidth < 1024);
+    }
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem('sm_clock_sidebar_open');
+      if (stored !== null) {
+        setDesktopSidebarOpen(stored === 'true');
+      }
+    } catch {
+      // Ignorar bloqueos de almacenamiento local
+    }
+  }, []);
+
+  const toggleDesktopSidebar = React.useCallback(() => {
+    setDesktopSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('sm_clock_sidebar_open', String(next));
+      } catch {
+        // Ignorar bloqueos de almacenamiento local
+      }
+      return next;
+    });
+  }, []);
+
+  // Cierra el cajón móvil al cambiar de ruta
+  React.useEffect(() => {
+    setMobileDrawerOpen(false);
+  }, [pathname]);
+
+  // Bloqueo de scroll y tecla Escape para el cajón de navegación móvil/tablet
+  React.useEffect(() => {
+    if (!mobileDrawerOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMobileDrawerOpen(false);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileDrawerOpen]);
+
+  // Gesto táctil desde el borde izquierdo (edge swipe) para abrir en móviles y tablets
+  React.useEffect(() => {
+    let startX: number | null = null;
+    let startY: number | null = null;
+
+    function handleTouchStart(e: TouchEvent) {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      // Solo iniciar el gesto si el toque comienza a menos de 32px del borde izquierdo
+      if (touch.clientX <= 32) {
+        startX = touch.clientX;
+        startY = touch.clientY;
+      } else {
+        startX = null;
+        startY = null;
+      }
+    }
+
+    function handleTouchEnd(e: TouchEvent) {
+      if (startX === null || startY === null) return;
+      const touch = e.changedTouches[0];
+      if (!touch) return;
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      // Deslizamiento horizontal hacia la derecha de al menos 45px
+      if (deltaX > 45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        setMobileDrawerOpen(true);
+      }
+
+      startX = null;
+      startY = null;
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
+  // Control táctil para deslizar hacia la izquierda y cerrar el panel móvil/tablet
+  const touchDrawerStartXRef = React.useRef<number | null>(null);
+  const touchDrawerStartYRef = React.useRef<number | null>(null);
+
+  function handleDrawerTouchStart(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchDrawerStartXRef.current = touch.clientX;
+    touchDrawerStartYRef.current = touch.clientY;
+  }
+
+  function handleDrawerTouchEnd(e: React.TouchEvent) {
+    if (touchDrawerStartXRef.current === null || touchDrawerStartYRef.current === null) return;
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - touchDrawerStartXRef.current;
+    const deltaY = touch.clientY - touchDrawerStartYRef.current;
+
+    // Deslizamiento hacia la izquierda de al menos 45px para cerrar
+    if (deltaX < -45 && Math.abs(deltaX) > Math.abs(deltaY) * 1.1) {
+      setMobileDrawerOpen(false);
+    }
+
+    touchDrawerStartXRef.current = null;
+    touchDrawerStartYRef.current = null;
+  }
+
+  function handleNavToggle() {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setMobileDrawerOpen((prev) => !prev);
+    } else {
+      toggleDesktopSidebar();
     }
   }
 
@@ -277,6 +600,12 @@ export function AppShell({
     return ADMIN_NAV_ITEMS;
   }, [mode, resolvedRole]);
 
+  const hasMoreNavItems = navItems.length > 5;
+  const mobileTabBarItems = React.useMemo(() => {
+    if (navItems.length <= 5) return navItems;
+    return navItems.slice(0, 4);
+  }, [navItems]);
+
   const roleBadgeLabel =
     resolvedRole === 'OPERADOR'
       ? 'Rol: Operador'
@@ -293,24 +622,41 @@ export function AppShell({
     <div className="flex min-h-dvh bg-[var(--bg)] text-[var(--text)]">
       {/* Sidebar Desktop */}
       <aside
+        id="desktop-nav-sidebar"
         aria-label="Navegación principal"
-        className="sticky top-0 hidden h-dvh w-[var(--sidebar-w)] shrink-0 flex-col justify-between border-r border-[var(--separator)] bg-[var(--surface-translucent)] p-[var(--s-5)] backdrop-blur-xl lg:flex"
+        className={cn(
+          'sticky top-0 hidden h-dvh shrink-0 flex-col justify-between border-r border-[var(--separator)] bg-[var(--surface-translucent)] backdrop-blur-xl transition-[width,padding,opacity] duration-200 ease-in-out lg:flex',
+          desktopSidebarOpen
+            ? 'w-[var(--sidebar-w)] p-[var(--s-5)] opacity-100'
+            : 'w-0 p-0 border-r-0 opacity-0 overflow-hidden pointer-events-none',
+        )}
       >
         <div className="flex flex-col gap-[var(--s-6)]">
-          <div className="flex items-center gap-[var(--s-3)] px-[var(--s-2)]">
-            <SmClockLogo size={40} className="shadow-[var(--shadow-1)] rounded-[10px]" />
-            <div className="flex flex-col">
-              <span className="text-base font-bold tracking-tight text-[var(--text)]">
-                SM Clock
-              </span>
-              <span className="text-xs font-medium text-[var(--text-2)]">
-                {resolvedRole === 'OPERADOR'
-                  ? 'Portal de Operador'
-                  : mode === 'client'
-                    ? 'Control de Asistencia'
-                    : 'Panel Super-Admin'}
-              </span>
+          <div className="flex items-center justify-between gap-[var(--s-2)] px-[var(--s-2)]">
+            <div className="flex items-center gap-[var(--s-3)]">
+              <SmClockLogo size={40} className="shadow-[var(--shadow-1)] rounded-[10px]" />
+              <div className="flex flex-col">
+                <span className="text-base font-bold tracking-tight text-[var(--text)]">
+                  SM Clock
+                </span>
+                <span className="text-xs font-medium text-[var(--text-2)]">
+                  {resolvedRole === 'OPERADOR'
+                    ? 'Portal de Operador'
+                    : mode === 'client'
+                      ? 'Control de Asistencia'
+                      : 'Panel Super-Admin'}
+                </span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              aria-label="Colapsar barra lateral"
+              title="Colapsar barra lateral"
+              className="flex size-8 min-h-[32px] min-w-[32px] items-center justify-center rounded-[var(--r-sm)] text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
+            >
+              <PanelLeftClose className="size-4" strokeWidth={1.75} aria-hidden="true" />
+            </button>
           </div>
 
           <nav className="flex flex-col gap-[var(--s-1)]">
@@ -345,15 +691,6 @@ export function AppShell({
         </div>
 
         <div className="flex flex-col gap-[var(--s-3)] border-t border-[var(--separator)] pt-[var(--s-4)]">
-          {roleBadgeLabel ? (
-            <div className="px-[var(--s-1)]">
-              <Badge
-                variant={resolvedRole === 'OPERADOR' ? 'info' : 'accent'}
-              >
-                {roleBadgeLabel}
-              </Badge>
-            </div>
-          ) : null}
           <div
             role="status"
             aria-live="polite"
@@ -374,21 +711,69 @@ export function AppShell({
                 : 'En vivo · America/Tijuana'}
             </span>
           </div>
+
+          <UserNavMenu
+            userSummary={userSummary}
+            showAvatarImage={showAvatarImage}
+            onAvatarError={() => setAvatarLoadError(true)}
+            initials={initials}
+            roleBadgeLabel={roleBadgeLabel}
+            signingOut={signingOut}
+            onSignOut={() => void handleSignOut()}
+          />
         </div>
       </aside>
 
       {/* Contenedor Principal */}
       <div className="flex min-w-0 flex-1 flex-col pb-[calc(var(--tabbar-h)+env(safe-area-inset-bottom))] lg:pb-0">
         <header className="sticky top-0 z-30 flex min-h-[var(--topbar-h)] flex-wrap items-center justify-between gap-[var(--s-3)] border-b border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-4)] py-[var(--s-3)] backdrop-blur-xl md:px-[var(--s-6)] lg:px-[var(--s-8)]">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-bold tracking-tight text-[var(--text)] md:text-2xl">
-              {title}
-            </h1>
-            {subtitle ? (
-              <p className="text-xs font-medium text-[var(--text-2)] md:text-sm">
-                {subtitle}
-              </p>
-            ) : null}
+          <div className="flex items-center gap-[var(--s-3)]">
+            <button
+              type="button"
+              onClick={handleNavToggle}
+              aria-label={
+                isMobileScreen
+                  ? mobileDrawerOpen
+                    ? 'Cerrar menú de navegación'
+                    : 'Abrir menú de navegación'
+                  : desktopSidebarOpen
+                    ? 'Colapsar menú lateral'
+                    : 'Expandir menú lateral'
+              }
+              aria-expanded={isMobileScreen ? mobileDrawerOpen : desktopSidebarOpen}
+              aria-controls={isMobileScreen ? 'mobile-nav-drawer' : 'desktop-nav-sidebar'}
+              title={
+                isMobileScreen
+                  ? mobileDrawerOpen
+                    ? 'Cerrar menú de navegación'
+                    : 'Abrir menú de navegación'
+                  : desktopSidebarOpen
+                    ? 'Colapsar menú lateral'
+                    : 'Expandir menú lateral'
+              }
+              className="flex size-10 min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 items-center justify-center rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] text-[var(--text)] shadow-[var(--shadow-1)] transition-transform active:scale-95 hover:bg-[var(--surface)] hover:text-[var(--accent)] cursor-pointer"
+            >
+              <Menu className="size-5 lg:hidden" strokeWidth={1.75} aria-hidden="true" />
+              <PanelLeft
+                className={cn(
+                  'hidden size-5 lg:block transition-transform',
+                  !desktopSidebarOpen && 'rotate-180',
+                )}
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
+            </button>
+
+            <div className="flex flex-col">
+              <h1 className="text-xl font-bold tracking-tight text-[var(--text)] md:text-2xl">
+                {title}
+              </h1>
+              {subtitle ? (
+                <p className="text-xs font-medium text-[var(--text-2)] md:text-sm">
+                  {subtitle}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-[var(--s-3)]">
@@ -396,159 +781,6 @@ export function AppShell({
               ? actions
               : null}
             <ThemeToggle />
-
-            {/* Avatar de usuario en esquina superior derecha (solo imagen de avatar, sin texto de nombre) */}
-            <div ref={menuContainerRef} className="relative">
-              <button
-                type="button"
-                aria-label="Abrir menú de perfil y credenciales de usuario"
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className="relative flex size-10 min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--separator)] bg-[var(--accent)] text-xs font-bold text-[var(--text-on-accent)] shadow-[var(--shadow-1)] transition-transform active:scale-95 cursor-pointer"
-              >
-                {showAvatarImage && userSummary.avatarUrl ? (
-                  <img
-                    src={userSummary.avatarUrl}
-                    alt="Avatar de usuario"
-                    referrerPolicy="no-referrer"
-                    onError={() => setAvatarLoadError(true)}
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span aria-hidden="true">{initials}</span>
-                )}
-              </button>
-
-              <AnimatePresence>
-                {menuOpen ? (
-                  <motion.div
-                    role="menu"
-                    aria-label="Opciones de cuenta y seguridad del usuario"
-                    initial={{ opacity: 0, scale: 0.95, y: -6 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -6 }}
-                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
-                    className="absolute right-0 z-50 mt-[var(--s-2)] w-72 rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
-                  >
-                  <div className="flex items-center gap-[var(--s-3)] border-b border-[var(--separator)] pb-[var(--s-3)]">
-                    <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--text-on-accent)]">
-                      {showAvatarImage && userSummary.avatarUrl ? (
-                        <img
-                          src={userSummary.avatarUrl}
-                          alt={userSummary.nombreCompleto}
-                          referrerPolicy="no-referrer"
-                          onError={() => setAvatarLoadError(true)}
-                          className="size-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <span aria-hidden="true">{initials}</span>
-                      )}
-                    </span>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm font-bold text-[var(--text)]">
-                        {userSummary.nombreCompleto}
-                      </span>
-                      {userSummary.email ? (
-                        <span className="truncate text-xs text-[var(--text-2)]">
-                          {userSummary.email}
-                        </span>
-                      ) : null}
-                      {roleBadgeLabel ? (
-                        <span className="mt-[var(--s-1)]">
-                          <Badge
-                            variant={
-                              resolvedRole === 'OPERADOR' ? 'info' : 'accent'
-                            }
-                          >
-                            {roleBadgeLabel}
-                          </Badge>
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-[var(--s-1)] py-[var(--s-2)]">
-                    <Link
-                      href="/perfil#credenciales"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
-                    >
-                      <UserCheck
-                        className="size-4 shrink-0 text-[var(--accent)]"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <div className="flex flex-col">
-                        <span>Datos principales (Nombre y Email)</span>
-                        <span className="text-[11px] font-normal text-[var(--text-2)]">
-                          Editar perfil e información de cuenta
-                        </span>
-                      </div>
-                    </Link>
-
-                    <Link
-                      href="/perfil#credenciales"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
-                    >
-                      <KeyRound
-                        className="size-4 shrink-0 text-[var(--accent)]"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <div className="flex flex-col">
-                        <span>Usuario y Contraseña</span>
-                        <span className="text-[11px] font-normal text-[var(--text-2)]">
-                          Configurar o cambiar tu contraseña
-                        </span>
-                      </div>
-                    </Link>
-
-                    <Link
-                      href="/perfil#biometricos"
-                      role="menuitem"
-                      onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-semibold text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
-                    >
-                      <Fingerprint
-                        className="size-4 shrink-0 text-[var(--accent)]"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <div className="flex flex-col">
-                        <span>Biométricos y WebAuthn</span>
-                        <span className="text-[11px] font-normal text-[var(--text-2)]">
-                          Passkeys, Touch ID, Face ID y llaves 2FA
-                        </span>
-                      </div>
-                    </Link>
-                  </div>
-
-                  <div className="border-t border-[var(--separator)] pt-[var(--s-2)]">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={signingOut}
-                      onClick={() => void handleSignOut()}
-                      className="flex w-full items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] py-[var(--s-2)] text-left text-xs font-semibold text-[var(--danger)] transition-colors hover:bg-[var(--surface-2)] cursor-pointer"
-                    >
-                      <LogOut
-                        className="size-4 shrink-0"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <span>
-                        {signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-                      </span>
-                    </button>
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-            </div>
           </div>
         </header>
 
@@ -582,7 +814,7 @@ export function AppShell({
         aria-label="Navegación móvil"
         className="fixed inset-x-0 bottom-0 z-40 flex min-h-[var(--tabbar-h)] items-center justify-around border-t border-[var(--separator)] bg-[var(--surface-translucent)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden"
       >
-        {navItems.slice(0, 5).map((item) => {
+        {mobileTabBarItems.map((item) => {
           const Icon = item.icon;
           const active =
             item.href === '/admin' || item.href === '/dashboard'
@@ -610,7 +842,173 @@ export function AppShell({
             </Link>
           );
         })}
+        {hasMoreNavItems ? (
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(true)}
+            aria-label="Abrir menú completo de navegación"
+            aria-expanded={mobileDrawerOpen}
+            aria-controls="mobile-nav-drawer"
+            className={cn(
+              'relative flex min-h-[var(--touch-min)] flex-1 flex-col items-center justify-center gap-[var(--s-1)] py-[var(--s-1)] text-xs font-semibold transition-colors active:scale-95 cursor-pointer',
+              mobileDrawerOpen
+                ? 'text-[var(--accent)]'
+                : 'text-[var(--text-2)] hover:text-[var(--text)]',
+            )}
+          >
+            <Menu className="size-5" strokeWidth={1.75} aria-hidden="true" />
+            <span>Menú</span>
+          </button>
+        ) : null}
       </nav>
+
+      {/* Cajón de Navegación Móvil y Tablet (con soporte para deslizar con el dedo / swipe / touch) */}
+      <AnimatePresence>
+        {mobileDrawerOpen ? (
+          <div
+            id="mobile-nav-drawer-root"
+            className="fixed inset-0 z-50 flex lg:hidden"
+          >
+            {/* Backdrop translúcido */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setMobileDrawerOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              aria-hidden="true"
+            />
+
+            {/* Hoja / Cajón lateral deslizable con soporte de arrastre por toque */}
+            <motion.aside
+              id="mobile-nav-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menú de navegación principal"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+              drag="x"
+              dragConstraints={{ left: -320, right: 0 }}
+              dragElastic={{ left: 0.05, right: 0 }}
+              onDragEnd={(_e, info) => {
+                if (info.offset.x < -60 || info.velocity.x < -300) {
+                  setMobileDrawerOpen(false);
+                }
+              }}
+              onTouchStart={handleDrawerTouchStart}
+              onTouchEnd={handleDrawerTouchEnd}
+              className="relative z-10 flex h-dvh w-[min(300px,85vw)] flex-col justify-between border-r border-[var(--separator)] bg-[var(--surface)] p-[var(--s-5)] shadow-[var(--shadow-2)] touch-pan-y"
+            >
+              {/* Indicador táctil de deslizamiento (iOS grab handle) */}
+              <div
+                aria-hidden="true"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center pointer-events-none"
+              >
+                <span className="h-12 w-1.5 rounded-full bg-[var(--separator)] opacity-60" />
+              </div>
+
+              <div className="flex flex-col gap-[var(--s-6)]">
+                {/* Encabezado con Logo y Botón de Cierre */}
+                <div className="flex items-center justify-between gap-[var(--s-2)] px-[var(--s-1)]">
+                  <div className="flex items-center gap-[var(--s-3)]">
+                    <SmClockLogo size={36} className="shadow-[var(--shadow-1)] rounded-[10px]" />
+                    <div className="flex flex-col">
+                      <span className="text-base font-bold tracking-tight text-[var(--text)]">
+                        SM Clock
+                      </span>
+                      <span className="text-xs font-medium text-[var(--text-2)]">
+                        {resolvedRole === 'OPERADOR'
+                          ? 'Portal de Operador'
+                          : mode === 'client'
+                            ? 'Control de Asistencia'
+                            : 'Panel Super-Admin'}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMobileDrawerOpen(false)}
+                    aria-label="Cerrar panel de navegación"
+                    className="flex size-10 min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] text-[var(--text-2)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
+                  >
+                    <X className="size-5" strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                </div>
+
+                {/* Enlaces de navegación */}
+                <nav className="flex flex-col gap-[var(--s-1)] overflow-y-auto pr-[var(--s-1)]">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const active =
+                      item.href === '/admin' || item.href === '/dashboard'
+                        ? pathname === item.href
+                        : pathname.startsWith(item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileDrawerOpen(false)}
+                        aria-current={active ? 'page' : undefined}
+                        className={cn(
+                          'flex min-h-[var(--touch-min)] items-center gap-[var(--s-3)] rounded-[var(--r-md)] px-[var(--s-3)] text-sm font-semibold transition-colors',
+                          active
+                            ? 'bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--shadow-1)]'
+                            : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]',
+                        )}
+                      >
+                        <Icon
+                          className="size-5 shrink-0"
+                          strokeWidth={1.75}
+                          aria-hidden="true"
+                        />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              {/* Pie con Estado Realtime y Avatar de Usuario con Menú de Opciones */}
+              <div className="flex flex-col gap-[var(--s-3)] border-t border-[var(--separator)] pt-[var(--s-4)]">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center gap-[var(--s-2)] px-[var(--s-1)]"
+                >
+                  <span
+                    className={cn(
+                      'size-2.5 rounded-full',
+                      realtimeState === 'reconnecting'
+                        ? 'animate-pulse bg-[var(--warning)]'
+                        : 'bg-[var(--success)]',
+                    )}
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs font-semibold text-[var(--text)]">
+                    {realtimeState === 'reconnecting'
+                      ? 'Reconectando…'
+                      : 'En vivo · America/Tijuana'}
+                  </span>
+                </div>
+
+                <UserNavMenu
+                  userSummary={userSummary}
+                  showAvatarImage={showAvatarImage}
+                  onAvatarError={() => setAvatarLoadError(true)}
+                  initials={initials}
+                  roleBadgeLabel={roleBadgeLabel}
+                  signingOut={signingOut}
+                  onSignOut={() => void handleSignOut()}
+                  onItemClick={() => setMobileDrawerOpen(false)}
+                />
+              </div>
+            </motion.aside>
+          </div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
