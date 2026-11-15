@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getRequestOrigin } from './origin';
+import { getPublicAppOrigin, getRequestOrigin } from './origin';
 
 describe('getRequestOrigin (Canonical public host resolution)', () => {
   it('extracts origin from x-forwarded-host and x-forwarded-proto (Reverse Proxy)', () => {
@@ -50,5 +50,29 @@ describe('getRequestOrigin (Canonical public host resolution)', () => {
     const req = new Request('http://localhost:3000/api/auth/callback');
 
     expect(getRequestOrigin(req)).toBe('http://localhost:3000');
+  });
+});
+
+describe('getPublicAppOrigin (Email invitation & password reset links)', () => {
+  it('always resolves to sm-clock.pleyadesoft.com even when called from localhost:3000', () => {
+    delete process.env['APP_DOMAIN'];
+    delete process.env['NEXT_PUBLIC_APP_URL'];
+    delete process.env['NEXT_PUBLIC_SITE_URL'];
+    const req = new Request('http://localhost:3000/api/usuarios', {
+      headers: {
+        host: 'localhost:3000',
+        'x-forwarded-host': 'localhost:3000',
+      },
+    });
+
+    expect(getPublicAppOrigin(req)).toBe('https://sm-clock.pleyadesoft.com');
+  });
+
+  it('prefers configured APP_DOMAIN when set', () => {
+    process.env['APP_DOMAIN'] = 'sm-clock.pleyadesoft.com';
+    const req = new Request('http://localhost:3000/api/usuarios');
+
+    expect(getPublicAppOrigin(req)).toBe('https://sm-clock.pleyadesoft.com');
+    delete process.env['APP_DOMAIN'];
   });
 });
