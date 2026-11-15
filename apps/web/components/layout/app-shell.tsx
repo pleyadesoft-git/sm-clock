@@ -159,7 +159,12 @@ function UserNavMenu({
             className="absolute bottom-full left-0 right-0 z-50 mb-[var(--s-2)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
           >
             {roleBadgeLabel ? (
-              <div className="flex items-center border-b border-[var(--separator)] px-[var(--s-2)] pb-[var(--s-2)]">
+              <div className="flex items-center gap-[var(--s-3)] border-b border-[var(--separator)] px-[var(--s-3)] pb-[var(--s-2)]">
+                <ShieldCheck
+                  className="size-4 shrink-0 text-[var(--accent)]"
+                  strokeWidth={1.75}
+                  aria-hidden="true"
+                />
                 <Badge
                   variant={
                     userSummary.rol === 'OPERADOR' ? 'info' : 'accent'

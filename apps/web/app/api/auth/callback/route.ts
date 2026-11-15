@@ -13,10 +13,12 @@ import {
   recordAuditLog,
 } from '@/lib/server/auth';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
+import { getRequestOrigin } from '@/lib/server/origin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export async function GET(request: Request): Promise<NextResponse> {
   const url = new URL(request.url);
+  const origin = getRequestOrigin(request);
   const code = url.searchParams.get('code');
   const inviteToken = (url.searchParams.get('invite_token') ?? '').trim();
   const modeParam = (url.searchParams.get('mode') ?? '').trim();
@@ -24,7 +26,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (!code) {
     return NextResponse.redirect(
-      new URL('/login?error=oauth_invalido', url.origin),
+      new URL('/login?error=oauth_invalido', origin),
     );
   }
 
@@ -34,7 +36,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (exchangeError || !sessionData.user) {
     return NextResponse.redirect(
-      new URL('/login?error=oauth_invalido', url.origin),
+      new URL('/login?error=oauth_invalido', origin),
     );
   }
 
@@ -54,7 +56,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       return NextResponse.redirect(
         new URL(
           '/login?mode=super_admin&error=super_admin_no_autorizado',
-          url.origin,
+          origin,
         ),
       );
     }
@@ -73,11 +75,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
       return NextResponse.redirect(
-        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, url.origin),
+        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, origin),
       );
     }
 
-    return NextResponse.redirect(new URL(safeDest, url.origin));
+    return NextResponse.redirect(new URL(safeDest, origin));
   }
 
   // 2. Si viene desde un enlace de invitación (/invitacion/[token]), validar el token específico
@@ -147,12 +149,12 @@ export async function GET(request: Request): Promise<NextResponse> {
           await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
         if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
           return NextResponse.redirect(
-            new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, url.origin),
+            new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, origin),
           );
         }
       }
 
-      return NextResponse.redirect(new URL(safeDest, url.origin));
+      return NextResponse.redirect(new URL(safeDest, origin));
     }
   }
 
@@ -171,10 +173,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
       return NextResponse.redirect(
-        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, url.origin),
+        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, origin),
       );
     }
-    return NextResponse.redirect(new URL(safeDest, url.origin));
+    return NextResponse.redirect(new URL(safeDest, origin));
   }
 
   // 4. Verificar si ya cuenta con perfil activo en `perfiles_usuarios` (por ID o por correo dado de alta en Super-Admin)
@@ -205,7 +207,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     ) {
       await supabase.auth.signOut();
       return NextResponse.redirect(
-        new URL('/login?error=cuenta_inactiva', url.origin),
+        new URL('/login?error=cuenta_inactiva', origin),
       );
     }
 
@@ -230,12 +232,12 @@ export async function GET(request: Request): Promise<NextResponse> {
         await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
         return NextResponse.redirect(
-          new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, url.origin),
+          new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, origin),
         );
       }
     }
 
-    return NextResponse.redirect(new URL(safeDest, url.origin));
+    return NextResponse.redirect(new URL(safeDest, origin));
   }
 
   // 5. Intentar reclamar invitación PENDIENTE por correo electrónico
@@ -249,7 +251,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   if (!claimed) {
     await supabase.auth.signOut();
     return NextResponse.redirect(
-      new URL('/login?error=sin_invitacion', url.origin),
+      new URL('/login?error=sin_invitacion', origin),
     );
   }
 
@@ -259,10 +261,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (aalData?.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
       return NextResponse.redirect(
-        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, url.origin),
+        new URL(`/mfa?next=${encodeURIComponent(safeDest)}`, origin),
       );
     }
   }
 
-  return NextResponse.redirect(new URL(safeDest, url.origin));
+  return NextResponse.redirect(new URL(safeDest, origin));
 }

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { getRequestOrigin } from '@/lib/server/origin';
 import {
   canRoleAccessPath,
   getDefaultHomeForRole,
@@ -171,7 +172,9 @@ export async function proxy(request: NextRequest) {
         request.nextUrl.searchParams.get('next'),
         rol,
       );
-      return NextResponse.redirect(new URL(targetPath, request.url));
+      return NextResponse.redirect(
+        new URL(targetPath, getRequestOrigin(request)),
+      );
     }
   } else if (pathname.startsWith('/mfa')) {
     // El rol OPERADOR no requiere MFA; redirigir a su panel
@@ -179,7 +182,9 @@ export async function proxy(request: NextRequest) {
       request.nextUrl.searchParams.get('next'),
       rol,
     );
-    return NextResponse.redirect(new URL(targetPath, request.url));
+    return NextResponse.redirect(
+      new URL(targetPath, getRequestOrigin(request)),
+    );
   }
 
   // 6. Si un usuario ya autenticado visita /login o /recuperar-contrasena (sin query de logout o error), redirigir a su home
@@ -192,7 +197,9 @@ export async function proxy(request: NextRequest) {
       request.nextUrl.searchParams.get('next'),
       rol,
     );
-    return NextResponse.redirect(new URL(targetPath, request.url));
+    return NextResponse.redirect(
+      new URL(targetPath, getRequestOrigin(request)),
+    );
   }
 
   // 7. Resolución segura de raíz `/` y `/admin` según el rol verificado

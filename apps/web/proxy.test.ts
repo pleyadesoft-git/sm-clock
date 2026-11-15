@@ -93,6 +93,36 @@ describe('proxy (Middleware Routing Guard & CSRF Isolation)', () => {
     expect(res.headers.get('location')).toBe('https://smclock.mx/dashboard');
   });
 
+  it('preserves public reverse-proxy origin (x-forwarded-host) when redirecting from internal port', async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: {
+        user: {
+          id: '550e8400-e29b-41d4-a716-446655440001',
+          app_metadata: {
+            rol: 'SUPER_ADMIN',
+            tenant_id: null,
+          },
+        },
+      },
+    });
+    mockGetAal.mockResolvedValueOnce({
+      data: { currentLevel: 'aal2', nextLevel: 'aal2' },
+    });
+
+    const req = new NextRequest('http://localhost:3008/login', {
+      headers: {
+        'x-forwarded-host': 'sm-clock.pleyadesoft.com',
+        'x-forwarded-proto': 'https',
+      },
+    });
+    const res = await proxy(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toBe(
+      'https://sm-clock.pleyadesoft.com/admin/empresas',
+    );
+  });
+
   it('enforces MFA (aal2) for ADMIN_EMPRESA and SUPER_ADMIN before accessing protected routes', async () => {
     mockGetUser.mockResolvedValueOnce({
       data: {

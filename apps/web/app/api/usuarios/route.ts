@@ -11,6 +11,7 @@ import {
   buildInvitationEmailTemplate,
   sendTenantEmail,
 } from '@/lib/server/smtp-mailer';
+import { getRequestOrigin } from '@/lib/server/origin';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 const INVITE_TTL_DAYS = 7;
@@ -211,7 +212,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = getRequestOrigin(request);
   const inviteUrl = `${origin}/invitacion/${rawToken}`;
 
   const expiraEnFormatted = new Intl.DateTimeFormat('es-MX', {

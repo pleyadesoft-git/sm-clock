@@ -7,6 +7,7 @@ import {
   sendTenantEmail,
 } from '@/lib/server/smtp-mailer';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
+import { getRequestOrigin } from '@/lib/server/origin';
 
 export async function POST(request: Request): Promise<NextResponse> {
   const ip =
@@ -52,7 +53,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ message: genericMessage });
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = getRequestOrigin(request);
   const { data: linkData, error: linkError } =
     await admin.auth.admin.generateLink({
       type: 'recovery',
