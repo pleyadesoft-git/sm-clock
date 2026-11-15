@@ -139,12 +139,15 @@ export async function POST(request: NextRequest) {
     const body: unknown = await request.json();
     const parsed = TenantCreateWithAdminSchema.safeParse(body);
     if (!parsed.success) {
+      const details = parsed.error.issues
+        .map((i) => `• [${i.path.join('.') || 'formulario'}]: ${i.message}`)
+        .join('\n');
       return NextResponse.json(
         {
           error:
             parsed.error.issues[0]?.message ??
             'Datos de empresa o del Administrador inicial inválidos',
-          details: parsed.error.flatten(),
+          details,
         },
         { status: 400 },
       );
@@ -166,6 +169,7 @@ export async function POST(request: NextRequest) {
         {
           error:
             'El correo electrónico del Administrador inicial ya está registrado en otra empresa.',
+          details: `El email "${adminEmail}" ya está asignado al perfil ID ${existingProfile.id}`,
         },
         { status: 409 },
       );
@@ -199,7 +203,13 @@ export async function POST(request: NextRequest) {
 
     if (error || !created) {
       return NextResponse.json(
-        { error: 'No se pudo registrar la empresa (verifica código o RFC único)' },
+        {
+          error:
+            'No se pudo registrar la empresa (verifica código o RFC único)',
+          details: error
+            ? `Postgres [${error.code}]: ${error.message} (${error.details ?? ''})`
+            : 'No se obtuvo respuesta de inserción',
+        },
         { status: 409 },
       );
     }
@@ -305,6 +315,19 @@ export async function POST(request: NextRequest) {
       },
       ip: request.headers.get('x-forwarded-for'),
     });
+
+    // Broadcast para clientes conectados en tiempo real
+    try {
+      const realtimeChannel = supabase.channel('admin:tenants:realtime');
+      await realtimeChannel.send({
+        type: 'broadcast',
+        event: 'tenant_created',
+        payload: { tenant_id: created.id, tenant_code: created.tenant_code },
+      });
+      await supabase.removeChannel(realtimeChannel);
+    } catch {
+      // Continuar incluso si broadcast falla
+    }
 
     const responsePayload: TenantWithInitialAdmin = {
       ...created,

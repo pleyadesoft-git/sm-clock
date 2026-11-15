@@ -266,6 +266,7 @@ export default function InvitacionPreRegistroPage() {
                 </div>
 
                 <form
+                  noValidate
                   onSubmit={handleSubmitPassword}
                   className="flex flex-col gap-[var(--s-4)]"
                 >
@@ -295,7 +296,6 @@ export default function InvitacionPreRegistroPage() {
                       type="text"
                       autoComplete="name"
                       enterKeyHint="next"
-                      required
                       value={nombreCompleto}
                       onChange={(e) => setNombreCompleto(e.target.value)}
                     />
@@ -335,9 +335,7 @@ export default function InvitacionPreRegistroPage() {
                       name="new-password"
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
-                      minLength={8}
                       enterKeyHint="done"
-                      required
                       aria-describedby="invite-password-constraints"
                       value={password}
                       onChange={(e) => {

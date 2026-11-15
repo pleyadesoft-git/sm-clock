@@ -25,6 +25,25 @@ export function PwaUpdateNotifier() {
       return;
     }
 
+    // En entorno de desarrollo (Next.js / Turbopack), deshabilitar el Service Worker
+    // y desregistrarlo automáticamente para evitar que sirva fragmentos JS obsoletos
+    // en caché y provoque errores de "Hydration failed" durante HMR.
+    if (process.env.NODE_ENV === 'development') {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const reg of registrations) {
+          void reg.unregister();
+        }
+      });
+      if ('caches' in window) {
+        caches.keys().then((keys) => {
+          for (const key of keys) {
+            void caches.delete(key);
+          }
+        });
+      }
+      return;
+    }
+
     let refreshing = false;
     // Escuchar cuando el nuevo SW tome el control para recargar la página limpia
     const handleControllerChange = () => {

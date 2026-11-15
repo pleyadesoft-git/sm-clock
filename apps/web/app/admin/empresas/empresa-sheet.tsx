@@ -15,6 +15,7 @@ import {
 } from '@sm-clock/contracts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorDialog, type ErrorDialogData } from '@/components/ui/error-dialog';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
 
@@ -88,10 +89,36 @@ export function EmpresaSheet({
   const [adminNombre, setAdminNombre] = React.useState('');
   const [adminEmail, setAdminEmail] = React.useState('');
 
+  const [fieldErrors, setFieldErrors] = React.useState<
+    Record<string, string>
+  >({});
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [errorDialog, setErrorDialog] = React.useState<ErrorDialogData | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = React.useState(false);
+  const formRef = React.useRef<HTMLFormElement | null>(null);
+  const prevOpenRef = React.useRef(open);
+  const prevInitialDataIdRef = React.useRef(initialData?.id);
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
 
   React.useEffect(() => {
+    const justOpened = open && !prevOpenRef.current;
+    const initialDataChanged = initialData?.id !== prevInitialDataIdRef.current;
+    prevOpenRef.current = open;
+    prevInitialDataIdRef.current = initialData?.id;
+
+    if (!justOpened && !initialDataChanged) {
+      return;
+    }
+
     if (initialData) {
       setTenantCode(initialData.tenant_code);
       setNombreComercial(initialData.nombre_comercial);
@@ -140,26 +167,32 @@ export function EmpresaSheet({
       setAdminNombre('');
       setAdminEmail('');
     }
+    setFieldErrors({});
     setErrorMessage(null);
+    setErrorDialog(null);
   }, [initialData, open]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleSave = async (event?: React.FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     setErrorMessage(null);
 
     const basePayload = {
-      tenant_code: tenantCode,
-      nombre_comercial: nombreComercial,
-      razon_social: razonSocial,
-      rfc,
-      regimen_fiscal: regimenFiscal,
-      codigo_postal_fiscal: codigoPostalFiscal,
-      uso_cfdi: usoCfdi,
-      correo_facturacion: correoFacturacion || null,
-      contacto_nombre: contactoNombre || adminNombre || null,
-      contacto_email: contactoEmail || adminEmail || null,
-      contacto_telefono: contactoTelefono || null,
-      notas_internas: notasInternas || null,
+      tenant_code: tenantCode.trim(),
+      nombre_comercial: nombreComercial.trim(),
+      razon_social: razonSocial.trim(),
+      rfc: rfc.trim().toUpperCase(),
+      regimen_fiscal: regimenFiscal.trim(),
+      codigo_postal_fiscal: codigoPostalFiscal.trim(),
+      uso_cfdi: usoCfdi.trim().toUpperCase(),
+      correo_facturacion: correoFacturacion.trim() || null,
+      contacto_nombre:
+        (isEditing ? contactoNombre || adminNombre : adminNombre).trim() ||
+        null,
+      contacto_email:
+        (isEditing ? contactoEmail || adminEmail : adminEmail).trim() ||
+        null,
+      contacto_telefono: contactoTelefono.trim() || null,
+      notas_internas: notasInternas.trim() || null,
       plan_codigo: planCodigo,
       estatus,
       zona_horaria: zonaHoraria,
@@ -170,25 +203,56 @@ export function EmpresaSheet({
       : TenantCreateWithAdminSchema.safeParse({
           ...basePayload,
           admin_inicial: {
-            nombre_completo: adminNombre,
-            email: adminEmail,
+            nombre_completo: adminNombre.trim(),
+            email: adminEmail.trim(),
           },
         });
 
     if (!parsed.success) {
-      setErrorMessage(
-        parsed.error.issues[0]?.message ?? 'Revisa los campos obligatorios',
-      );
+      const errMap: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const pathKey = issue.path.join('.');
+        if (!errMap[pathKey]) {
+          errMap[pathKey] = issue.message;
+        }
+      }
+      setFieldErrors(errMap);
+
+      const technicalList = parsed.error.issues
+        .map(
+          (issue) =>
+            `• Campo "${issue.path.join('.') || 'formulario'}": ${issue.message}`,
+        )
+        .join('\n');
+
+      const friendlyMsg =
+        parsed.error.issues.length === 1
+          ? parsed.error.issues[0]?.message ?? 'Revisa los campos obligatorios'
+          : 'Por favor verifica la información capturada; se encontraron datos obligatorios pendientes o con formato inválido.';
+
+      setErrorMessage(friendlyMsg);
+      setErrorDialog({
+        title: isEditing
+          ? 'Error al validar cambios de la empresa'
+          : 'Error al validar nueva empresa y Admin',
+        userMessage: friendlyMsg,
+        technicalDetails: technicalList,
+        endpoint: isEditing
+          ? `PATCH /api/admin/tenants/${initialData?.id ?? ''}`
+          : 'POST /api/admin/tenants',
+        status: 'VALIDATION_ERROR',
+      });
       return;
     }
 
+    setFieldErrors({});
     setIsSaving(true);
-    try {
-      const endpoint = initialData
-        ? `/api/admin/tenants/${initialData.id}`
-        : '/api/admin/tenants';
-      const method = initialData ? 'PATCH' : 'POST';
+    const endpoint = initialData
+      ? `/api/admin/tenants/${initialData.id}`
+      : '/api/admin/tenants';
+    const method = initialData ? 'PATCH' : 'POST';
 
+    try {
       const response = await fetch(endpoint, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -196,55 +260,98 @@ export function EmpresaSheet({
       });
 
       if (!response.ok) {
-        const errJson = (await response.json()) as { error?: string };
-        setErrorMessage(errJson.error ?? 'No se pudo guardar la empresa');
+        const errJson = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          details?: unknown;
+        };
+
+        const technicalDetails = errJson.details
+          ? typeof errJson.details === 'string'
+            ? errJson.details
+            : JSON.stringify(errJson.details, null, 2)
+          : `HTTP ${response.status} (${response.statusText || 'Error en servidor'})`;
+
+        const friendlyMsg =
+          errJson.error ?? 'No se pudo guardar la información de la empresa.';
+
+        setErrorMessage(friendlyMsg);
+        setErrorDialog({
+          title: isEditing
+            ? 'Error al actualizar empresa'
+            : 'Error al registrar empresa',
+          userMessage: friendlyMsg,
+          technicalDetails,
+          endpoint,
+          status: response.status,
+        });
         return;
       }
 
       onSaved();
       onOpenChange(false);
-    } catch {
-      setErrorMessage('Error de red al guardar los datos de la empresa.');
+    } catch (err) {
+      const technicalDetails =
+        err instanceof Error
+          ? `${err.name}: ${err.message}\n${err.stack ?? ''}`
+          : String(err);
+      const friendlyMsg =
+        'Error de red o conexión al intentar guardar los datos de la empresa. Por favor intenta de nuevo.';
+
+      setErrorMessage(friendlyMsg);
+      setErrorDialog({
+        title: 'Error de conexión con el servidor',
+        userMessage: friendlyMsg,
+        technicalDetails,
+        endpoint,
+        status: 'NETWORK_ERROR',
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <Sheet
-      open={open}
-      onOpenChange={onOpenChange}
-      title={isEditing ? 'Editar empresa' : 'Nueva empresa y Admin inicial'}
-      description="Datos comerciales, referencia fiscal y alta obligatoria del primer usuario Administrador (ADMIN_EMPRESA) con Google Auth."
-      footer={
-        <>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => onOpenChange(false)}
-            disabled={isSaving}
-          >
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            form="empresa-sheet-form"
-            disabled={isSaving}
-          >
-            {isSaving
-              ? 'Guardando…'
-              : isEditing
-                ? 'Guardar cambios'
-                : 'Registrar empresa y Admin'}
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="empresa-sheet-form"
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-[var(--s-4)]"
+    <>
+      <Sheet
+        open={open}
+        onOpenChange={onOpenChange}
+        title={isEditing ? 'Editar empresa' : 'Nueva empresa y Admin inicial'}
+        description="Datos comerciales, referencia fiscal y alta obligatoria del primer usuario Administrador (ADMIN_EMPRESA) con Google Auth."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => onOpenChange(false)}
+              disabled={isSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={isSaving}
+              onClick={() => {
+                void handleSave();
+              }}
+            >
+              {isSaving
+                ? 'Guardando…'
+                : isEditing
+                  ? 'Guardar cambios'
+                  : 'Registrar empresa y Admin'}
+            </Button>
+          </>
+        }
       >
+        <form
+          ref={formRef}
+          id="empresa-sheet-form"
+          noValidate
+          onSubmit={(e) => {
+            void handleSave(e);
+          }}
+          className="flex flex-col gap-[var(--s-4)]"
+        >
         <fieldset className="flex flex-col gap-[var(--s-3)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
           <legend className="px-[var(--s-2)] text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
             1. Administrador inicial de la empresa (Google Auth)
@@ -275,15 +382,13 @@ export function EmpresaSheet({
                 id="admin-nombre"
                 name="admin_nombre"
                 autoComplete="name"
-                required={!isEditing}
                 disabled={isEditing}
                 placeholder="Carlos Mendoza"
                 value={adminNombre}
+                errorMessage={fieldErrors['admin_inicial.nombre_completo']}
                 onChange={(e) => {
                   setAdminNombre(e.target.value);
-                  if (!isEditing && !contactoNombre) {
-                    setContactoNombre(e.target.value);
-                  }
+                  clearFieldError('admin_inicial.nombre_completo');
                 }}
               />
             </div>
@@ -300,15 +405,13 @@ export function EmpresaSheet({
                 spellCheck={false}
                 autoCapitalize="none"
                 autoCorrect="off"
-                required={!isEditing}
                 disabled={isEditing}
                 placeholder="admin@empresa.mx"
                 value={adminEmail}
+                errorMessage={fieldErrors['admin_inicial.email']}
                 onChange={(e) => {
                   setAdminEmail(e.target.value);
-                  if (!isEditing && !contactoEmail) {
-                    setContactoEmail(e.target.value);
-                  }
+                  clearFieldError('admin_inicial.email');
                 }}
               />
             </div>
@@ -323,13 +426,16 @@ export function EmpresaSheet({
             <Input
               id="tenant-code"
               name="tenant_code"
-              required
               spellCheck={false}
               autoCapitalize="characters"
               autoCorrect="off"
               placeholder="TIJ-001"
               value={tenantCode}
-              onChange={(e) => setTenantCode(e.target.value)}
+              errorMessage={fieldErrors['tenant_code']}
+              onChange={(e) => {
+                setTenantCode(e.target.value);
+                clearFieldError('tenant_code');
+              }}
             />
           </div>
 
@@ -360,10 +466,13 @@ export function EmpresaSheet({
           <Input
             id="nombre-comercial"
             name="nombre_comercial"
-            required
             placeholder="Maquiladora del Pacífico"
             value={nombreComercial}
-            onChange={(e) => setNombreComercial(e.target.value)}
+            errorMessage={fieldErrors['nombre_comercial']}
+            onChange={(e) => {
+              setNombreComercial(e.target.value);
+              clearFieldError('nombre_comercial');
+            }}
           />
         </div>
 
@@ -374,10 +483,13 @@ export function EmpresaSheet({
           <Input
             id="razon-social"
             name="razon_social"
-            required
             placeholder="MAQUILADORA DEL PACIFICO SA DE CV"
             value={razonSocial}
-            onChange={(e) => setRazonSocial(e.target.value)}
+            errorMessage={fieldErrors['razon_social']}
+            onChange={(e) => {
+              setRazonSocial(e.target.value);
+              clearFieldError('razon_social');
+            }}
           />
         </div>
 
@@ -389,13 +501,16 @@ export function EmpresaSheet({
             <Input
               id="rfc"
               name="rfc"
-              required
               spellCheck={false}
               autoCapitalize="characters"
               autoCorrect="off"
               placeholder="MPA010101ABC"
               value={rfc}
-              onChange={(e) => setRfc(e.target.value)}
+              errorMessage={fieldErrors['rfc']}
+              onChange={(e) => {
+                setRfc(e.target.value);
+                clearFieldError('rfc');
+              }}
             />
           </div>
 
@@ -406,11 +521,14 @@ export function EmpresaSheet({
             <Input
               id="regimen-fiscal"
               name="regimen_fiscal"
-              required
               inputMode="numeric"
               placeholder="601"
               value={regimenFiscal}
-              onChange={(e) => setRegimenFiscal(e.target.value)}
+              errorMessage={fieldErrors['regimen_fiscal']}
+              onChange={(e) => {
+                setRegimenFiscal(e.target.value);
+                clearFieldError('regimen_fiscal');
+              }}
             />
           </div>
 
@@ -421,12 +539,15 @@ export function EmpresaSheet({
             <Input
               id="cp-fiscal"
               name="codigo_postal_fiscal"
-              required
               inputMode="numeric"
               autoComplete="postal-code"
               placeholder="22000"
               value={codigoPostalFiscal}
-              onChange={(e) => setCodigoPostalFiscal(e.target.value)}
+              errorMessage={fieldErrors['codigo_postal_fiscal']}
+              onChange={(e) => {
+                setCodigoPostalFiscal(e.target.value);
+                clearFieldError('codigo_postal_fiscal');
+              }}
             />
           </div>
         </div>
@@ -485,7 +606,11 @@ export function EmpresaSheet({
               autoComplete="tel"
               placeholder="664 123 4567"
               value={contactoTelefono}
-              onChange={(e) => setContactoTelefono(e.target.value)}
+              errorMessage={fieldErrors['contacto_telefono']}
+              onChange={(e) => {
+                setContactoTelefono(e.target.value);
+                clearFieldError('contacto_telefono');
+              }}
             />
           </div>
 
@@ -502,7 +627,11 @@ export function EmpresaSheet({
               autoCorrect="off"
               placeholder="cfdi@empresa.mx"
               value={correoFacturacion}
-              onChange={(e) => setCorreoFacturacion(e.target.value)}
+              errorMessage={fieldErrors['correo_facturacion']}
+              onChange={(e) => {
+                setCorreoFacturacion(e.target.value);
+                clearFieldError('correo_facturacion');
+              }}
             />
           </div>
         </div>
@@ -516,7 +645,11 @@ export function EmpresaSheet({
             name="notas_internas"
             placeholder="Observaciones de instalación o cobranza…"
             value={notasInternas}
-            onChange={(e) => setNotasInternas(e.target.value)}
+            errorMessage={fieldErrors['notas_internas']}
+            onChange={(e) => {
+              setNotasInternas(e.target.value);
+              clearFieldError('notas_internas');
+            }}
           />
         </div>
 
@@ -528,7 +661,16 @@ export function EmpresaSheet({
             {errorMessage}
           </div>
         ) : null}
-      </form>
-    </Sheet>
+        </form>
+      </Sheet>
+
+      <ErrorDialog
+        open={Boolean(errorDialog)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setErrorDialog(null);
+        }}
+        error={errorDialog}
+      />
+    </>
   );
 }

@@ -186,6 +186,7 @@ export default function ConfiguracionPage() {
               </div>
             ) : (
               <form
+                noValidate
                 onSubmit={(e) => void handleSubmit(e)}
                 className="flex flex-col gap-[var(--s-5)]"
               >
@@ -217,7 +218,6 @@ export default function ConfiguracionPage() {
                   <Input
                     id="smtp-remitente-nombre"
                     name="remitente_nombre"
-                    required
                     placeholder="Recursos Humanos · Maquiladora del Pacífico"
                     value={remitenteNombre}
                     onChange={(e) => setRemitenteNombre(e.target.value)}
@@ -262,7 +262,6 @@ export default function ConfiguracionPage() {
                           id="smtp-host"
                           name="host"
                           spellCheck={false}
-                          required
                           placeholder="smtp.gmail.com"
                           value={host}
                           onChange={(e) => setHost(e.target.value)}
@@ -278,8 +277,6 @@ export default function ConfiguracionPage() {
                           name="puerto"
                           type="text"
                           inputMode="numeric"
-                          pattern="\d+"
-                          required
                           placeholder="465"
                           value={puerto}
                           onChange={(e) => setPuerto(e.target.value)}
@@ -331,7 +328,6 @@ export default function ConfiguracionPage() {
                           name="usuario"
                           type="email"
                           spellCheck={false}
-                          required={usarSmtpPropio}
                           placeholder="notificaciones@tuempresa.mx"
                           value={usuario}
                           onChange={(e) => setUsuario(e.target.value)}
@@ -350,7 +346,6 @@ export default function ConfiguracionPage() {
                           name="remitente_email"
                           type="email"
                           spellCheck={false}
-                          required={usarSmtpPropio}
                           placeholder="notificaciones@tuempresa.mx"
                           value={remitenteEmail}
                           onChange={(e) => setRemitenteEmail(e.target.value)}
@@ -387,7 +382,6 @@ export default function ConfiguracionPage() {
                         name="password"
                         type={showPassword ? 'text' : 'password'}
                         autoComplete="new-password"
-                        required={usarSmtpPropio && !tienePasswordGuardado}
                         placeholder={
                           tienePasswordGuardado
                             ? '•••••••••••••••• (Dejar en blanco para conservar la actual)'

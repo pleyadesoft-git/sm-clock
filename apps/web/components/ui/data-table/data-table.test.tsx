@@ -81,4 +81,31 @@ describe('<DataTable /> standard component', () => {
 
     expect(screen.getByText('No hay empresas registradas')).toBeDefined();
   });
+
+  it('renders search input with has-search-icon class and search attributes', () => {
+    const onSearchChange = vi.fn();
+    render(
+      <DataTable
+        caption="Empresas con búsqueda"
+        columns={columns}
+        data={[{ id: '1', nombre: 'Test', rfc: 'TST010101' }]}
+        total={1}
+        page={1}
+        pageSize={20}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        exportColumns={[]}
+        exportFilename="test"
+        onSearchChange={onSearchChange}
+        searchPlaceholder="Buscar por nombre comercial, razón social, RFC o código…"
+      />,
+    );
+
+    const searchInput = screen.getByRole('searchbox', {
+      name: 'Buscar por nombre comercial, razón social, RFC o código…',
+    });
+    expect(searchInput).toBeDefined();
+    expect(searchInput.classList.contains('has-search-icon')).toBe(true);
+  });
 });
+

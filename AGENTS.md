@@ -3,7 +3,7 @@
 SaaS que lee checadas de relojes ZKTeco/Hikvision (vía **Agente Local Python** en el sitio del cliente) o TA.Cloud, las procesa y las envía a CONTPAQi Nóminas, TRESS y RH4000. Mercado: Tijuana, B.C., México. UI en español (es-MX), código y commits en inglés.
 
 ## Stack
-Next.js (App Router) · TypeScript estricto · Supabase (Postgres, Auth, Realtime) · Tailwind · shadcn/ui · TanStack Query + TanStack Table · Zod · Motion (`motion/react`) · pnpm workspaces · Agente: Python 3.12 + FastAPI + SQLite.
+Next.js (App Router) · TypeScript estricto · Supabase (Postgres, Auth, Realtime) · Tailwind · shadcn/ui · TanStack Query + TanStack Table · React Hook Form + Zod · Motion (`motion/react`) · pnpm workspaces · Agente: Python 3.12 + FastAPI + SQLite.
 
 > **Versiones:** usa las últimas estables al inicializar y fíjalas exactas. **No asumas APIs de memoria**: consulta la documentación oficial antes de usar APIs de Next, Tailwind, shadcn, Zod o Supabase (cambian entre mayores).
 
@@ -38,6 +38,8 @@ cd agent && pytest
 8. Toda tabla de datos usa `<DataTable>` (sticky header, búsqueda, filtros, export XLSX/CSV/PDF).
 9. Sin `any`, sin `@ts-ignore`, sin `console.log` de datos de empleados.
 10. Cambios pequeños y enfocados; no refactorizar fuera de alcance.
+11. Todo diálogo, modal o drawer (`Sheet`) con acciones de guardado o confirmación **debe tener un footer fijo** (prop `footer` o clase `.ios-sheet-footer`) con los botones de acción siempre a la vista sin requerir scroll. El formulario/cuerpo (`.ios-sheet-body`) es el que tiene scroll vertical.
+12. Validación de formularios: no utilizar validaciones nativas del navegador (HTML); utilizar `react-hook-form` con esquemas `zod` (`@hookform/resolvers/zod`) y componentes `<Form>` de Shadcn (`components/ui/form`). La validación de error solo debe mostrarse una vez que el campo tenga la propiedad `dirty` (`isDirty: true`) o se intente enviar el formulario (`isSubmitted`). El estado de error se presenta exclusivamente con `input[aria-invalid="true"] { border-color: var(--danger); }` (nunca con `input:invalid` nativo para evitar campos rojos al cargar), `<FormLabel>` en rojo (`--danger`) y `<FormMessage>` (`text-xs font-medium text-[var(--danger)]`).
 
 ## Mapa de documentación (leer solo lo necesario)
 | Tema | Archivo |

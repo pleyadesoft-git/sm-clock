@@ -11,12 +11,26 @@ import {
   UserCheck,
   UserPlus,
 } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   InviteUserRequestSchema,
   UpdateTenantUserRequestSchema,
   type TenantUserRole,
   type TenantUserRow,
 } from '@sm-clock/contracts';
+import type { z } from 'zod';
+
+type InviteUserFormInput = z.input<typeof InviteUserRequestSchema>;
+type InviteUserFormOutput = z.output<typeof InviteUserRequestSchema>;
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,12 +63,22 @@ export default function UsuariosPage() {
 
   // Estado del Sheet de Invitación
   const [inviteOpen, setInviteOpen] = React.useState(false);
-  const [inviteEmail, setInviteEmail] = React.useState('');
-  const [inviteNombre, setInviteNombre] = React.useState('');
-  const [inviteRol, setInviteRol] =
-    React.useState<TenantUserRole>('OPERADOR');
   const [inviting, setInviting] = React.useState(false);
   const [lastInviteUrl, setLastInviteUrl] = React.useState<string | null>(null);
+
+  const inviteForm = useForm<
+    InviteUserFormInput,
+    unknown,
+    InviteUserFormOutput
+  >({
+    resolver: zodResolver(InviteUserRequestSchema),
+    defaultValues: {
+      email: '',
+      nombre_completo: '',
+      rol: 'OPERADOR',
+    },
+    mode: 'onTouched',
+  });
 
   // Estado del Sheet de Edición de Usuario
   const [editingUser, setEditingUser] = React.useState<TenantUserRow | null>(
@@ -80,9 +104,11 @@ export default function UsuariosPage() {
   });
 
   function openInviteSheet() {
-    setInviteEmail('');
-    setInviteNombre('');
-    setInviteRol('OPERADOR');
+    inviteForm.reset({
+      email: '',
+      nombre_completo: '',
+      rol: 'OPERADOR',
+    });
     setInviteOpen(true);
   }
 
@@ -92,29 +118,13 @@ export default function UsuariosPage() {
     setEditActivo(row.estatus === 'ACTIVO');
   }
 
-  async function handleSendInvitation(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const parsed = InviteUserRequestSchema.safeParse({
-      email: inviteEmail,
-      nombre_completo: inviteNombre,
-      rol: inviteRol,
-    });
-    if (!parsed.success) {
-      toast({
-        title: 'Datos de invitación inválidos',
-        description:
-          parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados.',
-        variant: 'danger',
-      });
-      return;
-    }
-
+  async function handleSendInvitation(values: InviteUserFormOutput) {
     setInviting(true);
     try {
       const res = await fetch('/api/usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(values),
       });
 
       const body = (await res.json()) as {
@@ -139,7 +149,7 @@ export default function UsuariosPage() {
       await queryClient.invalidateQueries({ queryKey: ['usuarios-tenant'] });
       toast({
         title: 'Invitación enviada',
-        description: `Se envió la invitación con rol ${inviteRol === 'ADMIN_EMPRESA' ? 'Admin' : 'Operador'}.`,
+        description: `Se envió la invitación con rol ${values.rol === 'ADMIN_EMPRESA' ? 'Admin' : 'Operador'}.`,
         variant: 'success',
       });
     } finally {
@@ -424,98 +434,8 @@ export default function UsuariosPage() {
         onOpenChange={setInviteOpen}
         title="Invitar usuario a la empresa"
         description="Se enviará un correo mediante el SMTP configurado de la empresa con un enlace único de pre-registro."
-      >
-        <form
-          onSubmit={(e) => void handleSendInvitation(e)}
-          className="flex flex-col gap-[var(--s-4)]"
-        >
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="invite-nombre" className="ios-label">
-              Nombre completo del invitado
-            </label>
-            <Input
-              id="invite-nombre"
-              name="nombre_completo"
-              type="text"
-              autoComplete="name"
-              required
-              placeholder="María Fernanda López"
-              value={inviteNombre}
-              onChange={(e) => setInviteNombre(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="invite-correo" className="ios-label">
-              Correo electrónico
-            </label>
-            <Input
-              id="invite-correo"
-              name="email"
-              type="email"
-              spellCheck={false}
-              required
-              placeholder="operador@empresa.mx"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-            />
-          </div>
-
-          <fieldset className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--separator)] p-[var(--s-3)]">
-            <legend className="px-[var(--s-1)] text-xs font-bold uppercase tracking-wider text-[var(--text-2)]">
-              Rol asignado en la plataforma
-            </legend>
-
-            <div className="flex items-start gap-[var(--s-2)]">
-              <input
-                type="radio"
-                id="rol-operador"
-                name="rol"
-                value="OPERADOR"
-                checked={inviteRol === 'OPERADOR'}
-                onChange={() => setInviteRol('OPERADOR')}
-                className="mt-1 accent-[var(--accent)]"
-              />
-              <label
-                htmlFor="rol-operador"
-                className="flex flex-col text-sm font-semibold text-[var(--text)] cursor-pointer"
-              >
-                <span className="inline-flex items-center gap-[var(--s-1)]">
-                  <UserCheck className="size-4 text-[var(--accent)]" aria-hidden="true" />
-                  <span>Operador</span>
-                </span>
-                <span className="text-xs font-normal text-[var(--text-2)]">
-                  Solo consulta movimientos (entradas y salidas) y descarga reportes en XLSX, CSV y PDF. Sin acceso a Usuarios ni Configuración.
-                </span>
-              </label>
-            </div>
-
-            <div className="flex items-start gap-[var(--s-2)] pt-[var(--s-2)] border-t border-[var(--separator)]">
-              <input
-                type="radio"
-                id="rol-admin"
-                name="rol"
-                value="ADMIN_EMPRESA"
-                checked={inviteRol === 'ADMIN_EMPRESA'}
-                onChange={() => setInviteRol('ADMIN_EMPRESA')}
-                className="mt-1 accent-[var(--accent)]"
-              />
-              <label
-                htmlFor="rol-admin"
-                className="flex flex-col text-sm font-semibold text-[var(--text)] cursor-pointer"
-              >
-                <span className="inline-flex items-center gap-[var(--s-1)]">
-                  <Shield className="size-4 text-[var(--accent)]" aria-hidden="true" />
-                  <span>Admin (Administrador)</span>
-                </span>
-                <span className="text-xs font-normal text-[var(--text-2)]">
-                  Acceso completo a Empleados, Sucursales, CRUD de Usuarios, envío de invitaciones y Configuración SMTP.
-                </span>
-              </label>
-            </div>
-          </fieldset>
-
-          <div className="flex justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
+        footer={
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -523,12 +443,125 @@ export default function UsuariosPage() {
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={inviting}>
+            <Button
+              type="submit"
+              form="invite-user-sheet-form"
+              disabled={inviting}
+            >
               <MailPlus className="size-4" aria-hidden="true" />
               <span>{inviting ? 'Enviando correo…' : 'Enviar invitación'}</span>
             </Button>
-          </div>
-        </form>
+          </>
+        }
+      >
+        <Form {...inviteForm}>
+          <form
+            id="invite-user-sheet-form"
+            noValidate
+            onSubmit={inviteForm.handleSubmit(handleSendInvitation)}
+            className="flex flex-col gap-[var(--s-4)]"
+          >
+            <FormField
+              control={inviteForm.control}
+              name="nombre_completo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre completo del invitado</FormLabel>
+                  <FormControl>
+                    <Input
+                      autoComplete="name"
+                      placeholder="María Fernanda López"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={inviteForm.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Correo electrónico</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      spellCheck={false}
+                      placeholder="operador@empresa.mx"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={inviteForm.control}
+              name="rol"
+              render={({ field }) => (
+                <FormItem>
+                  <fieldset className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--separator)] p-[var(--s-3)]">
+                    <legend className="px-[var(--s-1)] text-xs font-bold uppercase tracking-wider text-[var(--text-2)]">
+                      Rol asignado en la plataforma
+                    </legend>
+
+                    <div className="flex items-start gap-[var(--s-2)]">
+                      <input
+                        type="radio"
+                        id="rol-operador"
+                        name="rol"
+                        value="OPERADOR"
+                        checked={field.value === 'OPERADOR'}
+                        onChange={() => field.onChange('OPERADOR')}
+                        className="mt-1 accent-[var(--accent)]"
+                      />
+                      <label
+                        htmlFor="rol-operador"
+                        className="flex flex-col text-sm font-semibold text-[var(--text)] cursor-pointer"
+                      >
+                        <span className="inline-flex items-center gap-[var(--s-1)]">
+                          <UserCheck className="size-4 text-[var(--accent)]" aria-hidden="true" />
+                          <span>Operador</span>
+                        </span>
+                        <span className="text-xs font-normal text-[var(--text-2)]">
+                          Solo consulta movimientos (entradas y salidas) y descarga reportes en XLSX, CSV y PDF. Sin acceso a Usuarios ni Configuración.
+                        </span>
+                      </label>
+                    </div>
+
+                    <div className="flex items-start gap-[var(--s-2)] pt-[var(--s-2)] border-t border-[var(--separator)]">
+                      <input
+                        type="radio"
+                        id="rol-admin"
+                        name="rol"
+                        value="ADMIN_EMPRESA"
+                        checked={field.value === 'ADMIN_EMPRESA'}
+                        onChange={() => field.onChange('ADMIN_EMPRESA')}
+                        className="mt-1 accent-[var(--accent)]"
+                      />
+                      <label
+                        htmlFor="rol-admin"
+                        className="flex flex-col text-sm font-semibold text-[var(--text)] cursor-pointer"
+                      >
+                        <span className="inline-flex items-center gap-[var(--s-1)]">
+                          <Shield className="size-4 text-[var(--accent)]" aria-hidden="true" />
+                          <span>Admin (Administrador)</span>
+                        </span>
+                        <span className="text-xs font-normal text-[var(--text-2)]">
+                          Acceso completo a Empleados, Sucursales, CRUD de Usuarios, envío de invitaciones y Configuración SMTP.
+                        </span>
+                      </label>
+                    </div>
+                  </fieldset>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
       </Sheet>
 
       {/* Sheet para Editar Rol / Estatus de un Usuario Activo */}
@@ -543,8 +576,28 @@ export default function UsuariosPage() {
             ? `${editingUser.nombre_completo} (${editingUser.email})`
             : ''
         }
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setEditingUser(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              form="edit-user-sheet-form"
+              disabled={updatingUser}
+            >
+              <span>{updatingUser ? 'Guardando…' : 'Guardar cambios'}</span>
+            </Button>
+          </>
+        }
       >
         <form
+          id="edit-user-sheet-form"
+          noValidate
           onSubmit={(e) => void handleUpdateUser(e)}
           className="flex flex-col gap-[var(--s-4)]"
         >
@@ -603,19 +656,6 @@ export default function UsuariosPage() {
             >
               Cuenta activa con permiso para iniciar sesión
             </label>
-          </div>
-
-          <div className="flex justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setEditingUser(null)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={updatingUser}>
-              <span>{updatingUser ? 'Guardando…' : 'Guardar cambios'}</span>
-            </Button>
           </div>
         </form>
       </Sheet>

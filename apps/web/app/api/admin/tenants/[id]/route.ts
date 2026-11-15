@@ -23,10 +23,15 @@ export async function PATCH(
     const body: unknown = await request.json();
     const parsedBody = TenantUpdateSchema.safeParse(body);
     if (!parsedBody.success) {
+      const details = parsedBody.error.issues
+        .map((i) => `• [${i.path.join('.') || 'formulario'}]: ${i.message}`)
+        .join('\n');
       return NextResponse.json(
         {
-          error: 'Datos de actualización inválidos',
-          details: parsedBody.error.flatten(),
+          error:
+            parsedBody.error.issues[0]?.message ??
+            'Datos de actualización inválidos',
+          details,
         },
         { status: 400 },
       );
@@ -71,7 +76,12 @@ export async function PATCH(
 
     if (error || !updated) {
       return NextResponse.json(
-        { error: 'No se pudo actualizar la empresa' },
+        {
+          error: 'No se pudo actualizar la empresa',
+          details: error
+            ? `Postgres [${error.code}]: ${error.message} (${error.details ?? ''})`
+            : 'Registro no encontrado',
+        },
         { status: 400 },
       );
     }
@@ -86,6 +96,19 @@ export async function PATCH(
       },
       ip: request.headers.get('x-forwarded-for'),
     });
+
+    // Broadcast para clientes conectados en tiempo real
+    try {
+      const realtimeChannel = supabase.channel('admin:tenants:realtime');
+      await realtimeChannel.send({
+        type: 'broadcast',
+        event: 'tenant_updated',
+        payload: { tenant_id: updated.id, tenant_code: updated.tenant_code },
+      });
+      await supabase.removeChannel(realtimeChannel);
+    } catch {
+      // Continuar si broadcast no está disponible
+    }
 
     return NextResponse.json(updated);
   } catch (err) {

@@ -266,6 +266,11 @@ body {
   font-size: 0.9375rem;
 }
 
+.ios-input[type="search"],
+.ios-input.has-search-icon {
+  padding-inline-start: var(--s-10);
+}
+
 .ios-input::placeholder {
   color: var(--text-2);
   opacity: 0.85;
@@ -279,6 +284,22 @@ select.ios-input option {
 .ios-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* El borde de error NUNCA debe aplicarse mediante :invalid nativo de HTML porque
+   se activa al cargar la página en campos obligatorios vacíos.
+   Solo se aplica mediante [aria-invalid="true"], gobernado por react-hook-form
+   cuando el campo está dirty (modificado) o el formulario fue enviado (submitted). */
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+input[aria-invalid="true"]:focus-visible,
+select[aria-invalid="true"]:focus-visible,
+textarea[aria-invalid="true"]:focus-visible {
+  outline-color: var(--danger);
 }
 
 /* Native <dialog> Sheet & Modal rules (modern-web-guidance: dialog & light-dismiss-a-dialog) */

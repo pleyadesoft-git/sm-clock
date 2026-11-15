@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Building2,
   Clock,
@@ -419,12 +420,17 @@ export function AppShell({
                 )}
               </button>
 
-              {menuOpen ? (
-                <div
-                  role="menu"
-                  aria-label="Opciones de cuenta y seguridad del usuario"
-                  className="absolute right-0 z-50 mt-[var(--s-2)] w-72 rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
-                >
+              <AnimatePresence>
+                {menuOpen ? (
+                  <motion.div
+                    role="menu"
+                    aria-label="Opciones de cuenta y seguridad del usuario"
+                    initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                    className="absolute right-0 z-50 mt-[var(--s-2)] w-72 rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
+                  >
                   <div className="flex items-center gap-[var(--s-3)] border-b border-[var(--separator)] pb-[var(--s-3)]">
                     <span className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--accent)] text-xs font-bold text-[var(--text-on-accent)]">
                       {showAvatarImage && userSummary.avatarUrl ? (
@@ -539,8 +545,9 @@ export function AppShell({
                       </span>
                     </button>
                   </div>
-                </div>
+                </motion.div>
               ) : null}
+            </AnimatePresence>
             </div>
           </div>
         </header>
@@ -587,10 +594,17 @@ export function AppShell({
               href={item.href}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'flex min-h-[var(--touch-min)] flex-1 flex-col items-center justify-center gap-[var(--s-1)] py-[var(--s-1)] text-xs font-semibold',
+                'relative flex min-h-[var(--touch-min)] flex-1 flex-col items-center justify-center gap-[var(--s-1)] py-[var(--s-1)] text-xs font-semibold transition-colors',
                 active ? 'text-[var(--accent)]' : 'text-[var(--text-2)]',
               )}
             >
+              {active ? (
+                <motion.span
+                  layoutId="mobile-tab-indicator"
+                  transition={{ type: 'spring', stiffness: 400, damping: 34 }}
+                  className="absolute inset-x-2 inset-y-1 -z-10 rounded-[var(--r-md)] bg-[var(--surface-2)]"
+                />
+              ) : null}
               <Icon className="size-5" strokeWidth={1.75} aria-hidden="true" />
               <span>{item.label}</span>
             </Link>

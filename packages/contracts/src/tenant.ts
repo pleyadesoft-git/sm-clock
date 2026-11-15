@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   containsCodeInjectionPattern,
   safeEmailSchema,
+  safeOptionalEmailSchema,
   safeSanitizedTextSchema,
   sanitizeSearchQuery,
   sanitizeTextInput,
@@ -126,13 +127,12 @@ export const TenantBaseSchema = z.object({
     .toUpperCase()
     .regex(USO_CFDI_REGEX, 'Clave de uso CFDI inválida')
     .default('G03'),
-  correo_facturacion: safeEmailSchema('Correo de facturación inválido', 150)
-    .nullable()
-    .optional(),
+  correo_facturacion: safeOptionalEmailSchema(
+    'Correo de facturación inválido',
+    150,
+  ),
   contacto_nombre: OptionalSanitizedTenantField(150, 'El nombre de contacto'),
-  contacto_email: safeEmailSchema('Correo de contacto inválido', 150)
-    .nullable()
-    .optional(),
+  contacto_email: safeOptionalEmailSchema('Correo de contacto inválido', 150),
   contacto_telefono: z
     .string()
     .trim()

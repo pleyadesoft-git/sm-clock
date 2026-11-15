@@ -175,7 +175,7 @@ export function DataTable<TData extends RowData>({
     );
   };
 
-  const handleExport = (format: 'csv' | 'xlsx' | 'pdf') => {
+  const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
     const payload = {
       filename: exportFilename,
       title: caption,
@@ -184,7 +184,7 @@ export function DataTable<TData extends RowData>({
       rows: data,
     };
     if (format === 'csv') exportToCsv(payload);
-    if (format === 'xlsx') exportToXlsx(payload);
+    if (format === 'xlsx') await exportToXlsx(payload);
     if (format === 'pdf') exportToPdfPrint(payload);
   };
 
@@ -213,7 +213,7 @@ export function DataTable<TData extends RowData>({
                 placeholder={searchPlaceholder}
                 aria-label={searchPlaceholder}
                 enterKeyHint="search"
-                className="pl-[var(--s-8)]"
+                className="has-search-icon !pl-[var(--s-10)] !ps-[var(--s-10)]"
               />
             </div>
           ) : null}

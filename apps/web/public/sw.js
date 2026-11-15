@@ -59,8 +59,12 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // Ignorar peticiones que no sean GET
-  if (request.method !== 'GET') {
+  // Ignorar peticiones en entornos locales de desarrollo o que no sean GET
+  if (
+    request.method !== 'GET' ||
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1'
+  ) {
     return;
   }
 

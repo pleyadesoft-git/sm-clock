@@ -1,3 +1,7 @@
+import writeXlsxFile, {
+  type Row,
+  type SheetData,
+} from 'write-excel-file/universal';
 import { escapeCsvCell, neutralizeFormulaCell } from './sanitize';
 
 export interface ExportColumn<T> {
@@ -24,46 +28,43 @@ export function buildCsvContent<T>(options: ExportOptions<T>): string {
   return `\uFEFF${[headerLine, ...bodyLines].join('\r\n')}`;
 }
 
-function escapeXml(str: string): string {
-  return str
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
+export function sanitizeSheetName(name: string): string {
+  const sanitized = name.replace(/[\\/?*[\]:]/g, ' ').trim();
+  return sanitized.slice(0, 31) || 'Hoja1';
 }
 
-export function buildSpreadsheetXmlContent<T>(
+export async function buildXlsxBlob<T>(
   options: ExportOptions<T>,
-): string {
-  const headerCells = options.columns
-    .map(
-      (col) =>
-        `<Cell><Data ss:Type="String">${escapeXml(neutralizeFormulaCell(col.header))}</Data></Cell>`,
-    )
-    .join('');
+): Promise<Blob> {
+  const headerRow: Row = options.columns.map((col) => ({
+    value: neutralizeFormulaCell(col.header),
+    fontWeight: 'bold',
+  }));
 
-  const dataRows = options.rows
-    .map((row) => {
-      const cells = options.columns
-        .map((col) => {
-          const safeVal = neutralizeFormulaCell(col.accessor(row));
-          return `<Cell><Data ss:Type="String">${escapeXml(safeVal)}</Data></Cell>`;
-        })
-        .join('');
-      return `<Row>${cells}</Row>`;
-    })
-    .join('');
+  const dataRows: Row[] = options.rows.map((row) =>
+    options.columns.map((col) => {
+      const raw = col.accessor(row);
+      const safe = neutralizeFormulaCell(raw);
+      return {
+        value: safe,
+      };
+    }),
+  );
 
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<?mso-application progid="Excel.Sheet"?>',
-    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
-    `<Worksheet ss:Name="${escapeXml(options.title.slice(0, 31))}">`,
-    `<Table><Row>${headerCells}</Row>${dataRows}</Table>`,
-    '</Worksheet>',
-    '</Workbook>',
-  ].join('');
+  const sheetData: SheetData = [headerRow, ...dataRows];
+
+  const columns = options.columns.map((col) => {
+    const headerLen = col.header.length;
+    return { width: Math.max(headerLen + 4, 15) };
+  });
+
+  const sheetName = sanitizeSheetName(options.title);
+
+  return writeXlsxFile(sheetData, {
+    sheet: sheetName,
+    stickyRowsCount: 1,
+    columns,
+  }).toBlob();
 }
 
 function triggerDownload(blob: Blob, filename: string): void {
@@ -83,11 +84,10 @@ export function exportToCsv<T>(options: ExportOptions<T>): void {
   triggerDownload(blob, `${options.filename}.csv`);
 }
 
-export function exportToXlsx<T>(options: ExportOptions<T>): void {
-  const content = buildSpreadsheetXmlContent(options);
-  const blob = new Blob([content], {
-    type: 'application/vnd.ms-excel;charset=utf-8;',
-  });
+export async function exportToXlsx<T>(
+  options: ExportOptions<T>,
+): Promise<void> {
+  const blob = await buildXlsxBlob(options);
   triggerDownload(blob, `${options.filename}.xlsx`);
 }
 

@@ -3,10 +3,24 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, Pencil, Plus, Users } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   EmpleadoCreateSchema,
   EmpleadoUpdateSchema,
 } from '@sm-clock/contracts';
+import type { z } from 'zod';
+
+type EmpleadoFormInput = z.input<typeof EmpleadoCreateSchema>;
+type EmpleadoFormOutput = z.output<typeof EmpleadoCreateSchema>;
 import { PhotoUploader } from '@/components/features/empleados/photo-uploader';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
@@ -76,15 +90,21 @@ export default function EmpleadosPage() {
 
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<EmpleadoRow | null>(null);
-
-  const [codigoEmpleado, setCodigoEmpleado] = React.useState('');
-  const [nombreCompleto, setNombreCompleto] = React.useState('');
-  const [credencial, setCredencial] = React.useState('');
-  const [departamento, setDepartamento] = React.useState('');
-  const [puesto, setPuesto] = React.useState('');
-  const [sucursalId, setSucursalId] = React.useState('');
-  const [estatusEmpleado, setEstatusEmpleado] = React.useState<'A' | 'I'>('A');
   const [submitting, setSubmitting] = React.useState(false);
+
+  const form = useForm<EmpleadoFormInput, unknown, EmpleadoFormOutput>({
+    resolver: zodResolver(EmpleadoCreateSchema),
+    defaultValues: {
+      codigo_empleado: '',
+      nombre_completo: '',
+      credencial: '',
+      departamento: '',
+      puesto: '',
+      sucursal_id: null,
+      estatus_empleado: 'A',
+    },
+    mode: 'onTouched',
+  });
 
   const { data, isLoading } = useQuery<EmpleadosResponse>({
     queryKey: [
@@ -116,39 +136,42 @@ export default function EmpleadosPage() {
 
   function openNewSheet() {
     setEditing(null);
-    setCodigoEmpleado('');
-    setNombreCompleto('');
-    setCredencial('');
-    setDepartamento('');
-    setPuesto('');
-    setSucursalId(sucursales[0]?.id ?? '');
-    setEstatusEmpleado('A');
+    form.reset({
+      codigo_empleado: '',
+      nombre_completo: '',
+      credencial: '',
+      departamento: '',
+      puesto: '',
+      sucursal_id: sucursales[0]?.id ?? null,
+      estatus_empleado: 'A',
+    });
     setSheetOpen(true);
   }
 
   function openEditSheet(row: EmpleadoRow) {
     setEditing(row);
-    setCodigoEmpleado(row.codigo_empleado);
-    setNombreCompleto(row.nombre_completo);
-    setCredencial(row.credencial ?? '');
-    setDepartamento(row.departamento ?? '');
-    setPuesto(row.puesto ?? '');
-    setSucursalId(row.sucursal_id ?? '');
-    setEstatusEmpleado(row.estatus_empleado);
+    form.reset({
+      codigo_empleado: row.codigo_empleado,
+      nombre_completo: row.nombre_completo,
+      credencial: row.credencial ?? '',
+      departamento: row.departamento ?? '',
+      puesto: row.puesto ?? '',
+      sucursal_id: row.sucursal_id ?? null,
+      estatus_empleado: row.estatus_empleado,
+    });
     setSheetOpen(true);
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave(values: EmpleadoFormOutput) {
     const rawPayload = {
       ...(editing ? { id: editing.id } : {}),
-      codigo_empleado: codigoEmpleado,
-      nombre_completo: nombreCompleto,
-      credencial: credencial || null,
-      departamento: departamento || null,
-      puesto: puesto || null,
-      sucursal_id: sucursalId || null,
-      estatus_empleado: estatusEmpleado,
+      codigo_empleado: values.codigo_empleado,
+      nombre_completo: values.nombre_completo,
+      credencial: values.credencial || null,
+      departamento: values.departamento || null,
+      puesto: values.puesto || null,
+      sucursal_id: values.sucursal_id || null,
+      estatus_empleado: values.estatus_empleado,
     };
 
     const parsed = editing
@@ -417,133 +440,184 @@ export default function EmpleadosPage() {
             : 'Nuevo empleado'
         }
         description="Datos generales para reloj checador y fotografía privada (≤ 720 px)."
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setSheetOpen(false)}
+            >
+              Cerrar
+            </Button>
+            <Button
+              type="submit"
+              form="empleado-sheet-form"
+              disabled={submitting}
+            >
+              {submitting
+                ? 'Guardando…'
+                : editing
+                  ? 'Guardar datos'
+                  : 'Crear empleado'}
+            </Button>
+          </>
+        }
       >
         <div className="flex flex-col gap-[var(--s-5)]">
-          <form
-            onSubmit={(e) => void handleSave(e)}
-            className="flex flex-col gap-[var(--s-4)]"
-          >
-            <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-codigo" className="ios-label">
-                  Código de empleado (Reloj / Nómina)
-                </label>
-                <Input
-                  id="emp-codigo"
-                  required
-                  placeholder="1001"
-                  value={codigoEmpleado}
-                  onChange={(e) => setCodigoEmpleado(e.target.value)}
+          <Form {...form}>
+            <form
+              id="empleado-sheet-form"
+              noValidate
+              onSubmit={form.handleSubmit(handleSave)}
+              className="flex flex-col gap-[var(--s-4)]"
+            >
+              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="codigo_empleado"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Código de empleado (Reloj / Nómina)</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="1001"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="credencial"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número de tarjeta / credencial</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="CRD-1001"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
 
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-credencial" className="ios-label">
-                  Número de tarjeta / credencial
-                </label>
-                <Input
-                  id="emp-credencial"
-                  placeholder="CRD-1001"
-                  value={credencial}
-                  onChange={(e) => setCredencial(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-[var(--s-1)]">
-              <label htmlFor="emp-nombre" className="ios-label">
-                Nombre completo
-              </label>
-              <Input
-                id="emp-nombre"
-                required
-                placeholder="Alejandro Hernández Soto"
-                value={nombreCompleto}
-                onChange={(e) => setNombreCompleto(e.target.value)}
+              <FormField
+                control={form.control}
+                name="nombre_completo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre completo</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Alejandro Hernández Soto"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-depto" className="ios-label">
-                  Departamento
-                </label>
-                <Input
-                  id="emp-depto"
-                  placeholder="Producción"
-                  value={departamento}
-                  onChange={(e) => setDepartamento(e.target.value)}
+              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="departamento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Departamento</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Producción"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="puesto"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Puesto</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Operador CNC"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
 
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-puesto" className="ios-label">
-                  Puesto
-                </label>
-                <Input
-                  id="emp-puesto"
-                  placeholder="Operador CNC"
-                  value={puesto}
-                  onChange={(e) => setPuesto(e.target.value)}
+              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="sucursal_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Planta / Sucursal</FormLabel>
+                      <FormControl>
+                        <select
+                          value={field.value ?? ''}
+                          onChange={(e) =>
+                            field.onChange(e.target.value || null)
+                          }
+                          className="ios-input w-full px-[var(--s-3)] text-sm"
+                        >
+                          <option value="">Sin sucursal asignada</option>
+                          {sucursales.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.clave} — {s.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="estatus_empleado"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Estatus en nómina</FormLabel>
+                      <FormControl>
+                        <select
+                          value={field.value ?? 'A'}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === 'I' ? 'I' : 'A',
+                            )
+                          }
+                          className="ios-input w-full px-[var(--s-3)] text-sm"
+                        >
+                          <option value="A">Activo (A)</option>
+                          <option value="I">Inactivo / Baja (I)</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-sucursal" className="ios-label">
-                  Planta / Sucursal
-                </label>
-                <select
-                  id="emp-sucursal"
-                  value={sucursalId}
-                  onChange={(e) => setSucursalId(e.target.value)}
-                  className="ios-input w-full px-[var(--s-3)] text-sm"
-                >
-                  <option value="">Sin sucursal asignada</option>
-                  {sucursales.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.clave} — {s.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="emp-estatus" className="ios-label">
-                  Estatus en nómina
-                </label>
-                <select
-                  id="emp-estatus"
-                  value={estatusEmpleado}
-                  onChange={(e) =>
-                    setEstatusEmpleado(e.target.value === 'I' ? 'I' : 'A')
-                  }
-                  className="ios-input w-full px-[var(--s-3)] text-sm"
-                >
-                  <option value="A">Activo (A)</option>
-                  <option value="I">Inactivo / Baja (I)</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setSheetOpen(false)}
-              >
-                Cerrar
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting
-                  ? 'Guardando…'
-                  : editing
-                    ? 'Guardar datos'
-                    : 'Crear empleado'}
-              </Button>
-            </div>
-          </form>
+            </form>
+          </Form>
 
           {/* Componente PhotoUploader disponible en cuanto el empleado tiene ID */}
           {editing && (

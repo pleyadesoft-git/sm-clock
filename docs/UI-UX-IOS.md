@@ -54,13 +54,13 @@ Fuente: SF Pro no es redistribuible en web; usar `-apple-system` con respaldo **
 2. **Tarjetas agrupadas** (`--surface` sobre `--bg`), radio 20, sombra `--shadow-1`, separadores de 0.5 px.
 3. **Botones**: alto 44 px mínimo (área táctil), radio 14, texto 17/600. Gradiente **vertical de bajo contraste** (±6 % de luminosidad), sin brillos ni bordes marcados. Estado *pressed*: `scale(.98)` y oscurecer 6 %.
 4. **Navegación**: móvil = tab bar inferior translúcida (máx. 5) y títulos grandes que colapsan; desktop = sidebar translúcida + barra superior.
-5. **Hojas** (sheets) en lugar de modales en móvil; popovers en desktop.
+5. **Hojas** (sheets) en lugar de modales en móvil; popovers en desktop. Todo diálogo, modal o drawer con acciones de guardado cuenta obligatoriamente con pie fijo (`.ios-sheet-footer` / `footer` prop) para que los botones de acción nunca queden ocultos por scroll.
 6. **Movimiento** (Motion): resortes `{type:"spring", stiffness:400, damping:34}`; entradas de 180-260 ms; respetar `prefers-reduced-motion`.
 7. **Iconos**: Lucide, trazo 1.75, tamaño 20/24. **Estados vacíos, carga (skeleton) y error** obligatorios en cada vista.
 8. `env(safe-area-inset-*)` en barras fijas; PWA instalable.
 
 ## 3. Componentes (`components/ui`, base shadcn personalizada con los tokens)
-`Button` (primary/secondary/destructive/plain), `Card`, `List`/`ListItem`, `Input`, `SegmentedControl`, `Switch`, `Sheet`, `Popover`, `Toast`, `Badge`, `Tabs`, `Skeleton`, `EmptyState`, `StatCard`, `DataTable`, `ChartCard`, `Avatar`, `PhotoUploader` (drag & drop, cámara, editor canvas; ver `docs/FEATURE-FOTO-EMPLEADO.md`).
+`Button` (primary/secondary/destructive/plain), `Card`, `List`/`ListItem`, `Input`, `Form` (`FormField`, `FormItem`, `FormLabel`, `FormControl`, `FormMessage`), `SegmentedControl`, `Switch`, `Sheet`, `Popover`, `Toast`, `Badge`, `Tabs`, `Skeleton`, `EmptyState`, `StatCard`, `DataTable`, `ChartCard`, `Avatar`, `PhotoUploader` (drag & drop, cámara, editor canvas; ver `docs/FEATURE-FOTO-EMPLEADO.md`).
 No agregar un componente nuevo si existe uno equivalente. Prohibido hex/px sueltos en componentes (usar tokens/clases).
 
 ## 4. `<DataTable>` estándar (TanStack Table + Query)
@@ -112,3 +112,9 @@ Español es-MX, tono claro y breve. Fechas `dd/MM/yyyy HH:mm`, moneda `$1,234.00
 - [ ] Teclado y lector de pantalla
 - [ ] Sin valores crudos de color/espaciado
 - [ ] Tablas con `<DataTable>` (sticky, búsqueda, filtros, export)
+
+## 10. CSS Validaciones y Formularios
+- No utilizar validaciones nativas de HTML en inputs (`required`, `pattern`, `minlength`, etc.); usar siempre `noValidate` en los elementos `<form>`.
+- Utilizar la librería `react-hook-form` con esquemas `zod` (`@hookform/resolvers/zod`) y componentes `<Form>` de Shadcn (`components/ui/form`).
+- La validación de error solo debe mostrarse una vez que el campo tenga la propiedad `dirty` (`isDirty: true`, modificado por el usuario) o se intente enviar el formulario (`isSubmitted: true`).
+- El estado de error visual se presenta exclusivamente con `input[aria-invalid="true"] { border-color: var(--danger); }` (nunca con `input:invalid` nativo para evitar campos rojos al cargar), `<FormLabel>` en rojo (`text-[var(--danger)]`) y `<FormMessage>` (`text-xs font-medium text-[var(--danger)]`).

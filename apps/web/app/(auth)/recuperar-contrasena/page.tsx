@@ -92,7 +92,11 @@ export default function RecuperarContrasenaPage() {
           </CardHeader>
 
           <CardContent className="flex flex-col gap-[var(--s-4)]">
-            <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--s-4)]">
+            <form
+              noValidate
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-[var(--s-4)]"
+            >
               <div className="flex flex-col gap-[var(--s-1)]">
                 <label htmlFor="recovery-email" className="ios-label">
                   Correo electrónico registrado
@@ -104,7 +108,6 @@ export default function RecuperarContrasenaPage() {
                   autoComplete="username"
                   spellCheck={false}
                   enterKeyHint="done"
-                  required
                   placeholder="nombre@empresa.mx"
                   value={email}
                   onChange={(e) => {

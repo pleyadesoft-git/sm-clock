@@ -326,6 +326,7 @@ export default function AdminAgentesPage() {
       >
         <form
           id="agente-enrolar-sheet-form"
+          noValidate
           onSubmit={(e) => void handleGenerateCode(e)}
           className="flex flex-col gap-[var(--s-4)]"
         >

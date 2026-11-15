@@ -274,6 +274,7 @@ export default function PerfilUsuarioPage() {
                 </div>
               ) : (
                 <form
+                  noValidate
                   onSubmit={(e) => void handleSaveProfile(e)}
                   className="flex flex-col gap-[var(--s-4)]"
                 >
@@ -287,7 +288,6 @@ export default function PerfilUsuarioPage() {
                         name="name"
                         type="text"
                         autoComplete="name"
-                        required
                         placeholder="Ej. Roberto Gómez"
                         value={nombreCompleto}
                         onChange={(e) => setNombreCompleto(e.target.value)}
@@ -304,7 +304,6 @@ export default function PerfilUsuarioPage() {
                         type="email"
                         autoComplete="username"
                         spellCheck={false}
-                        required
                         placeholder="tu.correo@empresa.mx"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}

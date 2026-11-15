@@ -16,7 +16,18 @@ import {
   LoginRequestSchema,
   roleRequiresMfa,
   UserRoleSchema,
+  type LoginRequest,
 } from '@sm-clock/contracts';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -33,16 +44,22 @@ import { SmClockLogo } from '@/components/ui/sm-clock-logo';
 function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const [isSuperAdminMode, setIsSuperAdminMode] = React.useState(false);
 
+  const form = useForm<LoginRequest>({
+    resolver: zodResolver(LoginRequestSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+    mode: 'onTouched',
+  });
+
   const isLoggedOut = searchParams.get('logged_out') === '1';
-  const emailInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     const mode = searchParams.get('mode');
@@ -142,24 +159,14 @@ function LoginFormContent() {
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleCredentialsSubmit = async (values: LoginRequest) => {
     setErrorMessage(null);
-
-    const parsed = LoginRequestSchema.safeParse({ email, password });
-    if (!parsed.success) {
-      setErrorMessage(
-        parsed.error.issues[0]?.message ?? 'Verifica tus credenciales',
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const supabase = createSupabaseBrowserClient();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: parsed.data.email,
-        password: parsed.data.password,
+        email: values.email,
+        password: values.password,
       });
 
       if (error || !data.user) {
@@ -269,99 +276,109 @@ function LoginFormContent() {
             </div>
           ) : null}
 
-          <form
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-[var(--s-4)]"
-          >
-            <div className="flex flex-col gap-[var(--s-1)]">
-              <label htmlFor="email" className="ios-label">
-                Correo electrónico
-              </label>
-              <Input
-                ref={emailInputRef}
-                id="email"
+          <Form {...form}>
+            <form
+              noValidate
+              onSubmit={form.handleSubmit(handleCredentialsSubmit)}
+              className="flex flex-col gap-[var(--s-4)]"
+            >
+              <FormField
+                control={form.control}
                 name="email"
-                type="email"
-                autoComplete="username"
-                aria-describedby="login-title-description"
-                autoFocus
-                spellCheck={false}
-                enterKeyHint="next"
-                required
-                placeholder="nombre@empresa.mx"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (errorMessage) setErrorMessage(null);
-                }}
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Correo electrónico</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="email"
+                        autoComplete="username"
+                        aria-describedby="login-title-description"
+                        autoFocus
+                        spellCheck={false}
+                        enterKeyHint="next"
+                        placeholder="nombre@empresa.mx"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (errorMessage) setErrorMessage(null);
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
 
-            <div className="flex flex-col gap-[var(--s-1)]">
-              <div className="flex items-center justify-between">
-                <label htmlFor="current-password" className="ios-label">
-                  Contraseña
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  aria-pressed={showPassword}
-                  className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
-                  aria-label={
-                    showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
-                  }
-                >
-                  {showPassword ? (
-                    <>
-                      <EyeOff className="size-3.5" aria-hidden="true" />
-                      <span>Ocultar</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="size-3.5" aria-hidden="true" />
-                      <span>Mostrar</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <Input
-                id="current-password"
+              <FormField
+                control={form.control}
                 name="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                enterKeyHint="done"
-                required
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (errorMessage) setErrorMessage(null);
-                }}
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Contraseña</FormLabel>
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        aria-pressed={showPassword}
+                        className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                        aria-label={
+                          showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                        }
+                      >
+                        {showPassword ? (
+                          <>
+                            <EyeOff className="size-3.5" aria-hidden="true" />
+                            <span>Ocultar</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="size-3.5" aria-hidden="true" />
+                            <span>Mostrar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <FormControl>
+                      <Input
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        enterKeyHint="done"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (errorMessage) setErrorMessage(null);
+                        }}
+                      />
+                    </FormControl>
+                    <div className="mt-[var(--s-1)] flex justify-end">
+                      <Link
+                        href="/recuperar-contrasena"
+                        className="text-xs font-semibold text-[var(--accent)] hover:underline"
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </Link>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              <div className="mt-[var(--s-1)] flex justify-end">
-                <Link
-                  href="/recuperar-contrasena"
-                  className="text-xs font-semibold text-[var(--accent)] hover:underline"
+
+              {errorMessage ? (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
                 >
-                  ¿Olvidaste tu contraseña?
-                </Link>
-              </div>
-            </div>
+                  {errorMessage}
+                </div>
+              ) : null}
 
-            {errorMessage ? (
-              <div
-                role="alert"
-                aria-live="polite"
-                className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
-              >
-                {errorMessage}
-              </div>
-            ) : null}
-
-            <Button type="submit" disabled={isSubmitting} className="w-full">
-              <Lock className="size-4" strokeWidth={1.75} aria-hidden="true" />
-              <span>{isSubmitting ? 'Verificando…' : 'Iniciar sesión'}</span>
-            </Button>
-          </form>
+              <Button type="submit" disabled={isSubmitting} className="w-full">
+                <Lock className="size-4" strokeWidth={1.75} aria-hidden="true" />
+                <span>{isSubmitting ? 'Verificando…' : 'Iniciar sesión'}</span>
+              </Button>
+            </form>
+          </Form>
 
           <div className="relative flex items-center justify-center py-[var(--s-1)]">
             <div className="w-full border-t border-[var(--separator)]" />

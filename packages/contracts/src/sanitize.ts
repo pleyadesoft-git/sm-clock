@@ -194,3 +194,21 @@ export function safeEmailSchema(
     })
     .pipe(z.string().email(message).max(maxLength));
 }
+
+/**
+ * Esquema Zod para correos electrónicos opcionales (acepta null, undefined o string vacío y los normaliza a null).
+ */
+export function safeOptionalEmailSchema(
+  message = 'Ingresa un correo electrónico válido',
+  maxLength = 150,
+) {
+  return z
+    .union([
+      safeEmailSchema(message, maxLength),
+      z.literal(''),
+      z.null(),
+    ])
+    .transform((val) => (val && val.length > 0 ? val : null))
+    .optional();
+}
+

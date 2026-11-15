@@ -3,10 +3,24 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Pencil, Plus } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import {
   SucursalCreateSchema,
   SucursalUpdateSchema,
 } from '@sm-clock/contracts';
+import type { z } from 'zod';
+
+type SucursalFormInput = z.input<typeof SucursalCreateSchema>;
+type SucursalFormOutput = z.output<typeof SucursalCreateSchema>;
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,11 +60,18 @@ export default function SucursalesPage() {
 
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<SucursalRow | null>(null);
-  const [clave, setClave] = React.useState('');
-  const [nombre, setNombre] = React.useState('');
-  const [direccion, setDireccion] = React.useState('');
-  const [activa, setActiva] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
+
+  const form = useForm<SucursalFormInput, unknown, SucursalFormOutput>({
+    resolver: zodResolver(SucursalCreateSchema),
+    defaultValues: {
+      clave: '',
+      nombre: '',
+      direccion: '',
+      activa: true,
+    },
+    mode: 'onTouched',
+  });
 
   const { data, isLoading } = useQuery<SucursalesResponse>({
     queryKey: ['sucursales-list', page, pageSize, search],
@@ -70,27 +91,30 @@ export default function SucursalesPage() {
 
   function openNewSheet() {
     setEditing(null);
-    setClave('');
-    setNombre('');
-    setDireccion('');
-    setActiva(true);
+    form.reset({
+      clave: '',
+      nombre: '',
+      direccion: '',
+      activa: true,
+    });
     setSheetOpen(true);
   }
 
   function openEditSheet(row: SucursalRow) {
     setEditing(row);
-    setClave(row.clave);
-    setNombre(row.nombre);
-    setDireccion(row.direccion ?? '');
-    setActiva(row.activa);
+    form.reset({
+      clave: row.clave,
+      nombre: row.nombre,
+      direccion: row.direccion ?? '',
+      activa: row.activa,
+    });
     setSheetOpen(true);
   }
 
-  async function handleSave(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSave(values: SucursalFormOutput) {
     const rawBody = editing
-      ? { id: editing.id, clave, nombre, direccion: direccion || null, activa }
-      : { clave, nombre, direccion: direccion || null, activa };
+      ? { id: editing.id, ...values, direccion: values.direccion || null }
+      : { ...values, direccion: values.direccion || null };
 
     const parsed = editing
       ? SucursalUpdateSchema.safeParse(rawBody)
@@ -253,65 +277,8 @@ export default function SucursalesPage() {
         onOpenChange={setSheetOpen}
         title={editing ? 'Editar sucursal' : 'Nueva sucursal'}
         description="Define la clave y ubicación de la planta o centro de trabajo."
-      >
-        <form
-          onSubmit={(e) => void handleSave(e)}
-          className="flex flex-col gap-[var(--s-4)]"
-        >
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="sucursal-clave" className="ios-label">
-              Clave de sucursal
-            </label>
-            <Input
-              id="sucursal-clave"
-              required
-              placeholder="OTAY-1"
-              value={clave}
-              onChange={(e) => setClave(e.target.value.toUpperCase())}
-            />
-          </div>
-
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="sucursal-nombre" className="ios-label">
-              Nombre de la planta o sucursal
-            </label>
-            <Input
-              id="sucursal-nombre"
-              required
-              placeholder="Planta Industrial Otay"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="sucursal-direccion" className="ios-label">
-              Dirección
-            </label>
-            <Input
-              id="sucursal-direccion"
-              placeholder="Blvd. Bellas Artes 1850, Cd. Industrial Otay, Tijuana"
-              value={direccion}
-              onChange={(e) => setDireccion(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <label htmlFor="sucursal-activa" className="ios-label">
-              Estatus operativo
-            </label>
-            <select
-              id="sucursal-activa"
-              value={activa ? '1' : '0'}
-              onChange={(e) => setActiva(e.target.value === '1')}
-              className="ios-input w-full px-[var(--s-3)] text-sm"
-            >
-              <option value="1">Activa</option>
-              <option value="0">Inactiva</option>
-            </select>
-          </div>
-
-          <div className="flex justify-end gap-[var(--s-2)] pt-[var(--s-2)]">
+        footer={
+          <>
             <Button
               type="button"
               variant="secondary"
@@ -319,11 +286,100 @@ export default function SucursalesPage() {
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button
+              type="submit"
+              form="sucursal-sheet-form"
+              disabled={submitting}
+            >
               {submitting ? 'Guardando…' : 'Guardar sucursal'}
             </Button>
-          </div>
-        </form>
+          </>
+        }
+      >
+        <Form {...form}>
+          <form
+            id="sucursal-sheet-form"
+            noValidate
+            onSubmit={form.handleSubmit(handleSave)}
+            className="flex flex-col gap-[var(--s-4)]"
+          >
+            <FormField
+              control={form.control}
+              name="clave"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Clave de sucursal</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="OTAY-1"
+                      {...field}
+                      onChange={(e) =>
+                        field.onChange(e.target.value.toUpperCase())
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="nombre"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre de la planta o sucursal</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Planta Industrial Otay"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="direccion"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Dirección</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Blvd. Bellas Artes 1850, Cd. Industrial Otay, Tijuana"
+                      {...field}
+                      value={field.value ?? ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="activa"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Estatus operativo</FormLabel>
+                  <FormControl>
+                    <select
+                      value={field.value ? '1' : '0'}
+                      onChange={(e) => field.onChange(e.target.value === '1')}
+                      className="ios-input w-full px-[var(--s-3)] text-sm"
+                    >
+                      <option value="1">Activa</option>
+                      <option value="0">Inactiva</option>
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
       </Sheet>
     </AppShell>
   );

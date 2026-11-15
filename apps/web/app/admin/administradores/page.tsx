@@ -419,6 +419,7 @@ export default function AdminSuperAdminsPage() {
       >
         <form
           id="super-admin-sheet-form"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             setFormError(null);
@@ -439,7 +440,6 @@ export default function AdminSuperAdminsPage() {
                 id="sa-nombre"
                 name="nombre_completo"
                 autoComplete="name"
-                required
                 value={nombreCompleto}
                 onChange={(e) => setNombreCompleto(e.target.value)}
                 placeholder="Ej. Carlos Mendoza"
@@ -458,7 +458,6 @@ export default function AdminSuperAdminsPage() {
                 spellCheck={false}
                 autoCapitalize="none"
                 autoCorrect="off"
-                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="socio@smclock.mx"

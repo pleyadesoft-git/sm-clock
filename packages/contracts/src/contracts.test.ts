@@ -202,6 +202,27 @@ describe('@sm-clock/contracts — Auth, Tenant & Usuarios schemas', () => {
       expect(withAdmin.data.admin_inicial.email).toBe(
         'roberto.gomez@industriasbaja.mx',
       );
+      expect(withAdmin.data.contacto_email).toBeUndefined();
+    }
+
+    const withEmptyOptionalEmails = TenantCreateWithAdminSchema.safeParse({
+      tenant_code: 'TIJ-010',
+      nombre_comercial: 'Industrias Baja',
+      razon_social: 'INDUSTRIAS BAJA SA DE CV',
+      rfc: 'IBA010101ABC',
+      regimen_fiscal: '601',
+      codigo_postal_fiscal: '22000',
+      contacto_email: '',
+      correo_facturacion: '',
+      admin_inicial: {
+        nombre_completo: 'Roberto Gómez',
+        email: 'roberto@industriasbaja.mx',
+      },
+    });
+    expect(withEmptyOptionalEmails.success).toBe(true);
+    if (withEmptyOptionalEmails.success) {
+      expect(withEmptyOptionalEmails.data.contacto_email).toBeNull();
+      expect(withEmptyOptionalEmails.data.correo_facturacion).toBeNull();
     }
   });
 

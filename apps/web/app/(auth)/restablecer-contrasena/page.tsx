@@ -88,7 +88,11 @@ function ResetPasswordFormContent() {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-[var(--s-4)]">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-[var(--s-4)]">
+        <form
+          noValidate
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-[var(--s-4)]"
+        >
           <div className="flex flex-col gap-[var(--s-1)]">
             <div className="flex items-center justify-between">
               <label htmlFor="new-password" className="ios-label">
@@ -121,9 +125,7 @@ function ResetPasswordFormContent() {
               name="new-password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="new-password"
-              minLength={8}
               enterKeyHint="done"
-              required
               aria-describedby="new-password-help"
               value={password}
               onChange={(e) => {

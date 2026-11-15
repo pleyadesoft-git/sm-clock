@@ -386,6 +386,7 @@ export default function MfaVerificationPage() {
                   </div>
                 ) : (
                   <form
+                    noValidate
                     onSubmit={handleVerifyTotp}
                     className="flex flex-col gap-[var(--s-4)]"
                   >
@@ -422,10 +423,8 @@ export default function MfaVerificationPage() {
                         name="totp-code"
                         type="text"
                         inputMode="numeric"
-                        pattern="[0-9]{6}"
                         maxLength={6}
                         autoComplete="one-time-code"
-                        required
                         placeholder="123456"
                         className="text-center font-mono text-lg tracking-widest"
                         value={code}

@@ -19,6 +19,7 @@ import {
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
 import { useToast } from '@/components/ui/toast';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatFechaHoraMx } from '@/lib/utils';
 import { EmpresaSheet } from './empresa-sheet';
 
@@ -86,6 +87,41 @@ export default function AdminEmpresasPage() {
       return (await res.json()) as PaginatedResult<TenantRow>;
     },
   });
+
+  // Suscripción Realtime 100% en vivo (postgres_changes y broadcast)
+  React.useEffect(() => {
+    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      supabase = createSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+
+    const channel = supabase
+      .channel('admin:tenants:realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tenants' },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'perfiles_usuarios' },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+        },
+      )
+      .on('broadcast', { event: '*' }, () => {
+        void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const columns = React.useMemo<DataTableColumnDef<TenantRow>[]>(
     () => [
