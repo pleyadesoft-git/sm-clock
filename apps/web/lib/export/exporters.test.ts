@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildCsvContent,
+  buildPdfBlob,
   buildXlsxBlob,
   exportToCsv,
+  exportToPdf,
+  exportToPdfPrint,
   exportToXlsx,
   sanitizeSheetName,
 } from './exporters';
@@ -162,5 +165,87 @@ describe('exportToCsv and exportToXlsx browser trigger', () => {
     expect(createObjectURLMock).toHaveBeenCalled();
     expect(clickMock).toHaveBeenCalled();
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-xlsx');
+  });
+
+  it('creates and clicks an anchor link for PDF download', async () => {
+    const createObjectURLMock = vi.fn().mockReturnValue('blob:mock-pdf');
+    const revokeObjectURLMock = vi.fn();
+    globalThis.URL.createObjectURL = createObjectURLMock;
+    globalThis.URL.revokeObjectURL = revokeObjectURLMock;
+
+    const clickMock = vi.fn();
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      const el = originalCreateElement(tagName);
+      if (tagName === 'a') {
+        el.click = clickMock;
+      }
+      return el;
+    });
+
+    await exportToPdf({
+      filename: 'reporte-empresas',
+      title: 'Empresas',
+      columns: sampleColumns,
+      rows: sampleRows,
+    });
+
+    expect(createObjectURLMock).toHaveBeenCalled();
+    expect(clickMock).toHaveBeenCalled();
+    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-pdf');
+  });
+
+  it('exportToPdfPrint delegates to exportToPdf', async () => {
+    const createObjectURLMock = vi.fn().mockReturnValue('blob:mock-pdf-print');
+    const revokeObjectURLMock = vi.fn();
+    globalThis.URL.createObjectURL = createObjectURLMock;
+    globalThis.URL.revokeObjectURL = revokeObjectURLMock;
+
+    const clickMock = vi.fn();
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+      const el = originalCreateElement(tagName);
+      if (tagName === 'a') {
+        el.click = clickMock;
+      }
+      return el;
+    });
+
+    await exportToPdfPrint({
+      filename: 'reporte-empresas',
+      title: 'Empresas',
+      columns: sampleColumns,
+      rows: sampleRows,
+    });
+
+    expect(createObjectURLMock).toHaveBeenCalled();
+    expect(clickMock).toHaveBeenCalled();
+    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:mock-pdf-print');
+  });
+});
+
+describe('buildPdfBlob', () => {
+  it('generates a valid binary PDF with %PDF magic bytes and institutional layout', async () => {
+    const blob = await buildPdfBlob({
+      filename: 'empresas',
+      title: 'Directorio de empresas registradas',
+      subtitle: 'Total: 2 empresas registradas',
+      columns: sampleColumns,
+      rows: sampleRows,
+    });
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('application/pdf');
+    expect(blob.size).toBeGreaterThan(1000);
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+
+    // Firma mágica de PDF: %PDF- (0x25, 0x50, 0x44, 0x46, 0x2d)
+    expect(uint8[0]).toBe(0x25); // %
+    expect(uint8[1]).toBe(0x50); // P
+    expect(uint8[2]).toBe(0x44); // D
+    expect(uint8[3]).toBe(0x46); // F
+    expect(uint8[4]).toBe(0x2d); // -
   });
 });

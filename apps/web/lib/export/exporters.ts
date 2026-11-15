@@ -1,7 +1,10 @@
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import writeXlsxFile, {
   type Row,
   type SheetData,
 } from 'write-excel-file/universal';
+import { formatFechaHoraMx } from '@/lib/utils';
 import { escapeCsvCell, neutralizeFormulaCell } from './sanitize';
 
 export interface ExportColumn<T> {
@@ -91,53 +94,117 @@ export async function exportToXlsx<T>(
   triggerDownload(blob, `${options.filename}.xlsx`);
 }
 
-export function exportToPdfPrint<T>(options: ExportOptions<T>): void {
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) return;
+export async function buildPdfBlob<T>(
+  options: ExportOptions<T>,
+): Promise<Blob> {
+  const orientation = options.columns.length > 5 ? 'landscape' : 'portrait';
+  const doc = new jsPDF({
+    orientation,
+    unit: 'pt',
+    format: 'letter',
+  });
 
-  const doc = printWindow.document;
-  doc.title = options.title;
+  const margin = 36;
+  const nowStr = formatFechaHoraMx(new Date(), 'America/Tijuana');
 
-  const container = doc.createElement('div');
-  const heading = doc.createElement('h1');
-  heading.textContent = options.title;
-  container.appendChild(heading);
+  // Membrete superior institucional SM Clock
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('SM CLOCK · PLATAFORMA DE ASISTENCIA', margin, 32);
 
+  // Título del reporte
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(15, 23, 42);
+  doc.text(options.title, margin, 48);
+
+  // Subtítulo con total de registros y timestamp
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  const metaParts: string[] = [];
   if (options.subtitle) {
-    const sub = doc.createElement('p');
-    sub.textContent = options.subtitle;
-    container.appendChild(sub);
+    metaParts.push(options.subtitle);
+  }
+  metaParts.push(`Generado: ${nowStr} (Tijuana, B.C.)`);
+  doc.text(metaParts.join('  ·  '), margin, 60);
+
+  const head = [options.columns.map((col) => neutralizeFormulaCell(col.header))];
+  const body = options.rows.map((row) =>
+    options.columns.map((col) => {
+      const val = col.accessor(row);
+      const safe = neutralizeFormulaCell(val);
+      return safe;
+    }),
+  );
+
+  autoTable(doc, {
+    startY: 72,
+    margin: { left: margin, right: margin, bottom: 40 },
+    head,
+    body,
+    theme: 'striped',
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 8,
+      cellPadding: 4,
+    },
+    bodyStyles: {
+      fontSize: 7.5,
+      textColor: [30, 41, 59],
+      cellPadding: 4,
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252],
+    },
+    styles: {
+      overflow: 'linebreak',
+      valign: 'middle',
+    },
+  });
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    const pageSize = doc.internal.pageSize;
+    const pageHeight = pageSize.height || pageSize.getHeight();
+    const pageWidth = pageSize.width || pageSize.getWidth();
+
+    // Línea divisoria en pie de página
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(margin, pageHeight - 26, pageWidth - margin, pageHeight - 26);
+
+    // Leyenda y número de página
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Confidencial · SM Clock', margin, pageHeight - 14);
+
+    const pageStr = `Página ${i} de ${totalPages}`;
+    doc.text(
+      pageStr,
+      pageWidth - margin - doc.getTextWidth(pageStr),
+      pageHeight - 14,
+    );
   }
 
-  const table = doc.createElement('table');
-  table.setAttribute('border', '1');
-  table.setAttribute('cellpadding', '6');
-  table.setAttribute('cellspacing', '0');
+  const arrayBuffer = doc.output('arraybuffer');
+  return new Blob([arrayBuffer], { type: 'application/pdf' });
+}
 
-  const thead = doc.createElement('thead');
-  const headRow = doc.createElement('tr');
-  for (const col of options.columns) {
-    const th = doc.createElement('th');
-    th.textContent = neutralizeFormulaCell(col.header);
-    headRow.appendChild(th);
-  }
-  thead.appendChild(headRow);
-  table.appendChild(thead);
+export async function exportToPdf<T>(
+  options: ExportOptions<T>,
+): Promise<void> {
+  const blob = await buildPdfBlob(options);
+  triggerDownload(blob, `${options.filename}.pdf`);
+}
 
-  const tbody = doc.createElement('tbody');
-  for (const row of options.rows) {
-    const tr = doc.createElement('tr');
-    for (const col of options.columns) {
-      const td = doc.createElement('td');
-      td.textContent = neutralizeFormulaCell(col.accessor(row));
-      tr.appendChild(td);
-    }
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  container.appendChild(table);
-
-  doc.body.appendChild(container);
-  printWindow.focus();
-  printWindow.print();
+export async function exportToPdfPrint<T>(
+  options: ExportOptions<T>,
+): Promise<void> {
+  return exportToPdf(options);
 }

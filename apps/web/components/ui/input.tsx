@@ -57,6 +57,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={id}
           type={type}
+          suppressHydrationWarning
           aria-invalid={errorMessage ? true : undefined}
           aria-describedby={errorId}
           onChange={handleChange}

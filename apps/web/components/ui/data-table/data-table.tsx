@@ -34,7 +34,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import {
   exportToCsv,
-  exportToPdfPrint,
+  exportToPdf,
   exportToXlsx,
   type ExportColumn,
 } from '@/lib/export/exporters';
@@ -185,7 +185,7 @@ export function DataTable<TData extends RowData>({
     };
     if (format === 'csv') exportToCsv(payload);
     if (format === 'xlsx') await exportToXlsx(payload);
-    if (format === 'pdf') exportToPdfPrint(payload);
+    if (format === 'pdf') await exportToPdf(payload);
   };
 
   return (

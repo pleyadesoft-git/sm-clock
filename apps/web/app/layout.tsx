@@ -50,7 +50,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: FOUC_COLOR_SCHEME_SCRIPT }}
         />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
       </body>
     </html>
