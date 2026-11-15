@@ -295,14 +295,18 @@ export function PasskeySecurityCard() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.mfa.webauthn.register({
         friendlyName: parsedName.data.friendlyName,
-        webauthn: {},
+        webauthn: {
+          rpId: window.location.hostname,
+          rpOrigins: [window.location.origin],
+        },
       });
 
       if (error) {
         toast({
           title: 'No se pudo registrar el factor MFA WebAuthn',
           description:
-            'Verifica que WebAuthn MFA esté activo en tu proyecto Supabase.',
+            error.message ??
+            'Verifica que WebAuthn / Passkeys esté activo en tu proyecto Supabase.',
           variant: 'danger',
         });
         return;

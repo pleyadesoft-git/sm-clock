@@ -201,12 +201,18 @@ export default function MfaVerificationPage() {
       if (webauthnFactorId) {
         const { error } = await supabase.auth.mfa.webauthn.authenticate({
           factorId: webauthnFactorId,
-          webauthn: {},
+          webauthn: {
+            rpId: window.location.hostname,
+            rpOrigins: [window.location.origin],
+          },
         });
 
         if (error) {
+          console.error('Error al autenticar WebAuthn:', error);
           setErrorMessage(
-            'No se pudo verificar tu huella, rostro o llave de seguridad. Intenta nuevamente o usa código TOTP.',
+            error.message
+              ? `Error al verificar biométrico: ${error.message}`
+              : 'No se pudo verificar tu huella, rostro o llave de seguridad. Intenta nuevamente o usa código TOTP.',
           );
           return;
         }
@@ -229,7 +235,10 @@ export default function MfaVerificationPage() {
       const { error } = await supabase.auth.mfa.webauthn.register(
         {
           friendlyName: parsedEnroll.data.friendlyName,
-          webauthn: {},
+          webauthn: {
+            rpId: window.location.hostname,
+            rpOrigins: [window.location.origin],
+          },
         },
         platformBiometricAvailable
           ? {
@@ -242,16 +251,21 @@ export default function MfaVerificationPage() {
       );
 
       if (error) {
+        console.error('Error al registrar WebAuthn:', error);
         setErrorMessage(
-          'No se pudo registrar el factor biométrico WebAuthn. Verifica que tu dispositivo tenga Touch ID, Face ID o Windows Hello activo.',
+          error.message
+            ? `Error WebAuthn: ${error.message}`
+            : 'No se pudo registrar el factor biométrico WebAuthn. Verifica que Passkeys esté habilitado en el panel de Supabase o que tu dispositivo tenga Touch ID / Face ID activo.',
         );
         return;
       }
 
       await redirectAfterMfaSuccess();
-    } catch {
+    } catch (err) {
+      console.error('Excepción en ceremonia WebAuthn:', err);
+      const msg = err instanceof Error ? err.message : String(err);
       setErrorMessage(
-        'Error al ejecutar la ceremonia biométrica WebAuthn en el navegador.',
+        `Error al ejecutar la ceremonia biométrica WebAuthn: ${msg}`,
       );
     } finally {
       setIsVerifying(false);
