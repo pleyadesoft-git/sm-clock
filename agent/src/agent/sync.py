@@ -3,12 +3,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import random
 import secrets
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .db import AgentLocalDatabase
+
+logger = logging.getLogger("sm_clock_agent.sync")
 
 
 def sha256_hex(value: str) -> str:
@@ -55,6 +59,7 @@ def build_signed_headers(
     return {
         "Authorization": f"Bearer {credencial_token}",
         "Content-Type": "application/json",
+        "Accept": "application/json",
         "x-agent-id": agente_id,
         "x-agent-timestamp": ts_str,
         "x-agent-nonce": nonce_str,
@@ -69,11 +74,31 @@ def compute_backoff_seconds(attempt: int, base: float = 1.0, cap: float = 60.0) 
     return min(cap, exp + jitter)
 
 
+def check_clock_drift(server_ts_iso: str, max_drift_seconds: float = 120.0) -> tuple[float, bool]:
+    """
+    Compara el reloj del equipo local con el timestamp UTC devuelto por el servidor.
+    Retorna (drift_segundos, alerta_desvio).
+    Alerta si hay desvío mayor a 2 minutos (>120 s).
+    """
+    try:
+        # server_ts_iso: ISO 8601 UTC
+        srv_clean = server_ts_iso.replace("Z", "+00:00")
+        srv_dt = datetime.fromisoformat(srv_clean)
+        local_dt = datetime.now(timezone.utc)
+        drift = abs((local_dt - srv_dt).total_seconds())
+        is_alert = drift > max_drift_seconds
+        return drift, is_alert
+    except Exception:
+        return 0.0, False
+
+
 class CloudSyncClient:
     """
     Sincronizador del Agente Local hacia la API de la nube (`/api/v1/agente/*`).
-    - Envía lotes de hasta 500 checadas firmados con HMAC-SHA256 + timestamp + nonce.
-    - Solo marca `sincronizado=1` en SQLite local cuando el servidor responde 200 OK.
+    - Enrolamiento con código de un solo uso.
+    - Envío de latidos cada 60 s con detección de desvío de reloj.
+    - Envío de lotes de hasta 500 checadas firmados con HMAC-SHA256.
+    - Sincronización de catálogo de empleados (07:05 y 14:05).
     """
 
     def __init__(
@@ -82,12 +107,33 @@ class CloudSyncClient:
         db: AgentLocalDatabase,
         agente_id: str,
         credencial_token: str,
-        transport_post: Callable[[str, str, dict[str, str]], tuple[int, dict[str, Any]]],
+        server_url: str = "http://127.0.0.1:3000",
+        transport_post: Callable[[str, str, dict[str, str]], tuple[int, dict[str, Any]]] | None = None,
     ) -> None:
         self.db = db
         self.agente_id = agente_id
         self.credencial_token = credencial_token
+        self.server_url = server_url.rstrip("/")
         self.transport_post = transport_post
+        self.ultimo_latido_ts: str | None = None
+        self.ultimo_drift_segundos: float = 0.0
+        self.alerta_desvio_reloj: bool = False
+
+    def _execute_post(self, path: str, raw_body: str, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
+        if self.transport_post:
+            return self.transport_post(path, raw_body, headers)
+        try:
+            import httpx
+            full_url = f"{self.server_url}{path}"
+            resp = httpx.post(full_url, headers=headers, content=raw_body, timeout=10.0)
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"text": resp.text}
+            return resp.status_code, data
+        except Exception as exc:
+            logger.warning("Error de transporte en POST %s: %s", path, exc)
+            return 503, {"error": str(exc)}
 
     def flush_pending_batch(self, max_batch_size: int = 500) -> int:
         pending = self.db.fetch_pending_batch(limit=min(500, max_batch_size))
@@ -117,11 +163,119 @@ class CloudSyncClient:
             raw_body=raw_body,
         )
 
-        status_code, _ = self.transport_post(
+        status_code, resp_data = self._execute_post(
             "/api/v1/agente/checadas",
             raw_body,
             headers,
         )
         if status_code == 200:
-            return self.db.mark_batch_synced([p.id for p in pending])
+            synced_count = self.db.mark_batch_synced([p.id for p in pending])
+            if "servidor_ts_utc" in resp_data:
+                drift, alert = check_clock_drift(str(resp_data["servidor_ts_utc"]))
+                self.ultimo_drift_segundos = drift
+                self.alerta_desvio_reloj = alert
+            return synced_count
         return 0
+
+    def send_heartbeat(
+        self,
+        version: str = "1.0.0",
+        fuentes_estado: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """
+        Envía latido cada 60 s a `/api/v1/agente/latido` con versión, timestamp local,
+        cola pendiente y estado de salud de cada reloj conectado.
+        """
+        payload = {
+            "version": version,
+            "ts_local_agente": datetime.now().isoformat(),
+            "cola_pendiente": self.db.count_pending(),
+            "fuentes_estado": fuentes_estado or [],
+        }
+        raw_body = json.dumps(payload, separators=(",", ":"))
+        headers = build_signed_headers(
+            agente_id=self.agente_id,
+            credencial_token=self.credencial_token,
+            raw_body=raw_body,
+        )
+
+        status_code, resp_data = self._execute_post(
+            "/api/v1/agente/latido",
+            raw_body,
+            headers,
+        )
+        if status_code == 200:
+            self.ultimo_latido_ts = datetime.now(timezone.utc).isoformat()
+            if "servidor_ts_utc" in resp_data:
+                drift, alert = check_clock_drift(str(resp_data["servidor_ts_utc"]))
+                self.ultimo_drift_segundos = drift
+                self.alerta_desvio_reloj = alert
+                if alert:
+                    logger.warning("ALERTA DESVÍO DE RELOJ: El reloj local difiere %.1f s del servidor (>120s)", drift)
+            return True
+        return False
+
+    def sync_employees(self) -> int:
+        """
+        Descarga catálogo de empleados del tenant desde la nube (`/api/v1/agente/sync-empleados`)
+        y actualiza la caché local SQLite.
+        """
+        raw_body = json.dumps({"agente_id": self.agente_id}, separators=(",", ":"))
+        headers = build_signed_headers(
+            agente_id=self.agente_id,
+            credencial_token=self.credencial_token,
+            raw_body=raw_body,
+        )
+
+        status_code, resp_data = self._execute_post(
+            "/api/v1/agente/sync-empleados",
+            raw_body,
+            headers,
+        )
+        if status_code == 200 and "empleados" in resp_data:
+            empleados_list = resp_data.get("empleados", [])
+            return self.db.upsert_empleados(empleados_list)
+        return 0
+
+
+def enroll_agent_with_code(
+    *,
+    codigo_enrolamiento: str,
+    nombre_agente: str,
+    server_url: str = "http://127.0.0.1:3000",
+    version: str = "1.0.0",
+    hostname: str | None = None,
+    transport_post: Callable[[str, str, dict[str, str]], tuple[int, dict[str, Any]]] | None = None,
+) -> dict[str, Any] | None:
+    """
+    Canjea el código de enrolamiento de un solo uso en `POST /api/v1/agente/enrolar`.
+    Devuelve los datos del nuevo agente (`agente_id`, `credencial_token`, `tenant_id`, `zona_horaria`).
+    """
+    payload = {
+        "codigo_enrolamiento": codigo_enrolamiento.strip(),
+        "nombre_agente": nombre_agente.strip(),
+        "version": version,
+        "hostname": hostname,
+    }
+    raw_body = json.dumps(payload, separators=(",", ":"))
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    if transport_post:
+        status_code, data = transport_post("/api/v1/agente/enrolar", raw_body, headers)
+    else:
+        try:
+            import httpx
+            full_url = f"{server_url.rstrip('/')}/api/v1/agente/enrolar"
+            resp = httpx.post(full_url, headers=headers, content=raw_body, timeout=15.0)
+            status_code = resp.status_code
+            data = resp.json()
+        except Exception as exc:
+            logger.error("Fallo al enrolar agente contra %s: %s", server_url, exc)
+            return None
+
+    if status_code in (200, 201) and "credencial_token" in data:
+        return data
+    return None

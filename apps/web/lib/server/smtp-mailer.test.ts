@@ -48,3 +48,37 @@ describe('smtp-mailer templates', () => {
     expect(recovery.html).toContain('token_hash=abc123');
   });
 });
+
+describe('smtp-mailer Google SMTP and App Password resolution', () => {
+  it('resolves Google SMTP configuration with tenant credentials and App Password', async () => {
+    const { resolveTenantSmtpConfig } = await import('./smtp-mailer');
+
+    // Tenant null returns default Google SMTP
+    const defaultSmtp = await resolveTenantSmtpConfig(null);
+    expect(defaultSmtp.provider).toBe('GOOGLE_DEFAULT');
+    expect(defaultSmtp.host).toBe('smtp.gmail.com');
+    expect(defaultSmtp.port).toBe(465);
+    expect(defaultSmtp.security).toBe('TLS');
+  });
+
+  it('normalizes Google App Password by removing spaces in test send', async () => {
+    const { sendSmtpTestEmail } = await import('./smtp-mailer');
+
+    const result = await sendSmtpTestEmail({
+      tenantId: null,
+      to: 'destino@test.com',
+      overrideConfig: {
+        usar_smtp_propio: false,
+        host: 'smtp.gmail.com',
+        puerto: 465,
+        seguridad: 'TLS',
+        usuario: 'notificaciones@empresa.com',
+        password: 'abcd efgh ijkl mnop',
+        remitente_nombre: 'SM Clock Test',
+      },
+    });
+
+    expect(result.provider).toBe('GOOGLE_DEFAULT');
+    expect(result.delivered).toBe(true);
+  });
+});

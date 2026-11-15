@@ -81,13 +81,7 @@ export async function resolveTenantSmtpConfig(
     .eq('tenant_id', tenantId)
     .maybeSingle();
 
-  if (
-    !smtpRow ||
-    !smtpRow.usar_smtp_propio ||
-    !smtpRow.activo ||
-    !smtpRow.usuario ||
-    !smtpRow.remitente_email
-  ) {
+  if (!smtpRow || !smtpRow.activo) {
     return {
       provider: 'GOOGLE_DEFAULT',
       host: defaultHost,
@@ -96,7 +90,7 @@ export async function resolveTenantSmtpConfig(
       user: defaultUser,
       pass: defaultPass,
       fromEmail: defaultFromEmail,
-      fromName: smtpRow?.remitente_nombre ?? defaultFromName,
+      fromName: defaultFromName,
     };
   }
 
@@ -123,20 +117,48 @@ export async function resolveTenantSmtpConfig(
     }
   }
 
-  const sec: SmtpSecurity =
-    smtpRow.seguridad === 'STARTTLS' || smtpRow.seguridad === 'NONE'
-      ? smtpRow.seguridad
-      : 'TLS';
+  if (smtpRow.usar_smtp_propio) {
+    if (!smtpRow.usuario || !smtpRow.remitente_email) {
+      return {
+        provider: 'GOOGLE_DEFAULT',
+        host: defaultHost,
+        port: defaultPort,
+        security: defaultSecurity,
+        user: defaultUser,
+        pass: defaultPass,
+        fromEmail: defaultFromEmail,
+        fromName: smtpRow.remitente_nombre ?? defaultFromName,
+      };
+    }
 
+    const sec: SmtpSecurity =
+      smtpRow.seguridad === 'STARTTLS' || smtpRow.seguridad === 'NONE'
+        ? smtpRow.seguridad
+        : 'TLS';
+
+    return {
+      provider: 'CUSTOM_TENANT',
+      host: smtpRow.host,
+      port: smtpRow.puerto,
+      security: sec,
+      user: smtpRow.usuario,
+      pass: decryptedPass,
+      fromEmail: smtpRow.remitente_email,
+      fromName: smtpRow.remitente_nombre,
+    };
+  }
+
+  // Google SMTP (Por defecto) autenticado con cuenta de Google y App Password del tenant
   return {
-    provider: 'CUSTOM_TENANT',
-    host: smtpRow.host,
-    port: smtpRow.puerto,
-    security: sec,
-    user: smtpRow.usuario,
-    pass: decryptedPass,
-    fromEmail: smtpRow.remitente_email,
-    fromName: smtpRow.remitente_nombre,
+    provider: 'GOOGLE_DEFAULT',
+    host: 'smtp.gmail.com',
+    port: 465,
+    security: 'TLS',
+    user: smtpRow.usuario ?? defaultUser,
+    pass: decryptedPass ?? defaultPass,
+    fromEmail:
+      smtpRow.remitente_email ?? smtpRow.usuario ?? defaultFromEmail,
+    fromName: smtpRow.remitente_nombre ?? defaultFromName,
   };
 }
 
@@ -410,8 +432,8 @@ export async function sendSmtpTestEmail(params: {
 }): Promise<SendEmailResult> {
   const savedConfig = await resolveTenantSmtpConfig(params.tenantId);
 
-  const effectiveConfig: ResolvedSmtpConfig =
-    params.overrideConfig && params.overrideConfig.usar_smtp_propio
+  const effectiveConfig: ResolvedSmtpConfig = params.overrideConfig
+    ? params.overrideConfig.usar_smtp_propio
       ? {
           provider: 'CUSTOM_TENANT',
           host: params.overrideConfig.host,
@@ -421,7 +443,7 @@ export async function sendSmtpTestEmail(params: {
           pass:
             params.overrideConfig.password &&
             params.overrideConfig.password.trim().length > 0
-              ? params.overrideConfig.password
+              ? params.overrideConfig.password.trim().replace(/\s+/g, '')
               : savedConfig.pass,
           fromEmail:
             params.overrideConfig.remitente_email &&
@@ -430,7 +452,26 @@ export async function sendSmtpTestEmail(params: {
               : savedConfig.fromEmail,
           fromName: params.overrideConfig.remitente_nombre,
         }
-      : savedConfig;
+      : {
+          provider: 'GOOGLE_DEFAULT',
+          host: 'smtp.gmail.com',
+          port: 465,
+          security: 'TLS',
+          user: params.overrideConfig.usuario ?? savedConfig.user,
+          pass:
+            params.overrideConfig.password &&
+            params.overrideConfig.password.trim().length > 0
+              ? params.overrideConfig.password.trim().replace(/\s+/g, '')
+              : savedConfig.pass,
+          fromEmail:
+            params.overrideConfig.remitente_email &&
+            params.overrideConfig.remitente_email.trim().length > 0
+              ? params.overrideConfig.remitente_email
+              : (params.overrideConfig.usuario ?? savedConfig.fromEmail),
+          fromName:
+            params.overrideConfig.remitente_nombre || savedConfig.fromName,
+        }
+    : savedConfig;
 
   const safeFromName = escapeHtml(effectiveConfig.fromName);
   const safeHost = escapeHtml(

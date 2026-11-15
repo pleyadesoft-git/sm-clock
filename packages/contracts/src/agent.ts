@@ -85,6 +85,62 @@ export const AgentSignedHeadersSchema = z.object({
 });
 export type AgentSignedHeaders = z.infer<typeof AgentSignedHeadersSchema>;
 
+export const AgentHeartbeatResponseSchema = z.object({
+  ok: z.boolean(),
+  servidor_ts_utc: z.string().datetime({ offset: true }),
+  comandos_pendientes: z.array(z.string()).default([]),
+});
+export type AgentHeartbeatResponse = z.infer<typeof AgentHeartbeatResponseSchema>;
+
+export const AgentChecadasBatchResponseSchema = z.object({
+  ok: z.boolean(),
+  insertadas: z.number().int().min(0),
+  duplicadas: z.number().int().min(0).default(0),
+  servidor_ts_utc: z.string().datetime({ offset: true }),
+});
+export type AgentChecadasBatchResponse = z.infer<
+  typeof AgentChecadasBatchResponseSchema
+>;
+
+export const LocalEmployeeSyncItemSchema = z.object({
+  id: z.uuid(),
+  codigo_empleado: z.string().trim().min(1).max(30),
+  nombre_completo: z.string().trim().min(1).max(150),
+  activo: z.boolean().default(true),
+});
+export type LocalEmployeeSyncItem = z.infer<typeof LocalEmployeeSyncItemSchema>;
+
+export const AgentEmployeesSyncResponseSchema = z.object({
+  empleados: z.array(LocalEmployeeSyncItemSchema),
+});
+export type AgentEmployeesSyncResponse = z.infer<
+  typeof AgentEmployeesSyncResponseSchema
+>;
+
+export const ContpaqiLayoutConfigSchema = z.object({
+  encoding: z.enum(['windows-1252', 'utf-8']).default('windows-1252'),
+  line_ending: z.enum(['\r\n', '\n']).default('\r\n'),
+  ruta_salida: z.string().min(1).default('MovimientosDyHporperiodo.cfg'),
+});
+export type ContpaqiLayoutConfig = z.infer<typeof ContpaqiLayoutConfigSchema>;
+
+export const TressLayoutConfigSchema = z.object({
+  encoding: z.enum(['windows-1252', 'utf-8']).default('windows-1252'),
+  line_ending: z.enum(['\r\n', '\n']).default('\r\n'),
+  ruta_salida: z.string().min(1).default('tress_checadas.txt'),
+  terminal_defecto: z.string().min(1).default('01'),
+});
+export type TressLayoutConfig = z.infer<typeof TressLayoutConfigSchema>;
+
+export const Rh4000ConfigSchema = z.object({
+  client_domain: z.string().min(1).max(120),
+  bearer_token: z.string().min(10),
+  company_code: z.string().default('001'),
+  access_point_code: z.string().default('001'),
+  timeout_seconds: z.number().min(1).max(60).default(10),
+});
+export type Rh4000Config = z.infer<typeof Rh4000ConfigSchema>;
+
 export const AdminCreateEnrollmentCodeSchema = z.object({
   tenant_id: z.uuid(),
   ttl_minutos: z.number().int().min(5).max(1440).default(30),
@@ -197,8 +253,14 @@ export function getAgentContractsJsonSchema(): Record<string, unknown> {
       AgentEnrollRequest: z.toJSONSchema(AgentEnrollRequestSchema),
       AgentEnrollResponse: z.toJSONSchema(AgentEnrollResponseSchema),
       AgentHeartbeat: z.toJSONSchema(AgentHeartbeatSchema),
+      AgentHeartbeatResponse: z.toJSONSchema(AgentHeartbeatResponseSchema),
       AgentChecadasBatch: z.toJSONSchema(AgentChecadasBatchSchema),
+      AgentChecadasBatchResponse: z.toJSONSchema(AgentChecadasBatchResponseSchema),
+      AgentEmployeesSyncResponse: z.toJSONSchema(AgentEmployeesSyncResponseSchema),
       AgentSignedHeaders: z.toJSONSchema(AgentSignedHeadersSchema),
+      ContpaqiLayoutConfig: z.toJSONSchema(ContpaqiLayoutConfigSchema),
+      TressLayoutConfig: z.toJSONSchema(TressLayoutConfigSchema),
+      Rh4000Config: z.toJSONSchema(Rh4000ConfigSchema),
     },
   };
 }

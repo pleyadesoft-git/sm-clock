@@ -3,11 +3,13 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ExternalLink,
   Eye,
   EyeOff,
   Lock,
   Mail,
   Save,
+  Send,
   Server,
   ShieldCheck,
 } from 'lucide-react';
@@ -63,6 +65,8 @@ export default function ConfiguracionPage() {
   const [tienePasswordGuardado, setTienePasswordGuardado] =
     React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [destinatarioPrueba, setDestinatarioPrueba] = React.useState('');
+  const [testing, setTesting] = React.useState(false);
 
   const { data, isLoading } = useQuery<SmtpConfigResponse>({
     queryKey: ['configuracion-smtp'],
@@ -87,20 +91,59 @@ export default function ConfiguracionPage() {
       setRemitenteNombre(cfg.remitente_nombre || 'SM Clock · Google SMTP');
       setTienePasswordGuardado(cfg.tiene_password);
       setPassword('');
+      if (cfg.usuario && !destinatarioPrueba) {
+        setDestinatarioPrueba(cfg.usuario);
+      }
     }
   }, [data]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const cleanPassword = password.trim().replace(/\s+/g, '');
+
+    if (!usarSmtpPropio) {
+      if (!usuario.trim()) {
+        toast({
+          title: 'Falta la cuenta de Google',
+          description:
+            'Debes ingresar la cuenta de Google (Gmail o Google Workspace) que autoriza el envío.',
+          variant: 'danger',
+        });
+        return;
+      }
+      if (!tienePasswordGuardado && !cleanPassword) {
+        toast({
+          title: 'Falta la App Password de Google',
+          description:
+            'Debes ingresar la llave App Password de 16 caracteres generada en tu cuenta de Google.',
+          variant: 'danger',
+        });
+        return;
+      }
+    } else {
+      if (!tienePasswordGuardado && !cleanPassword) {
+        toast({
+          title: 'Falta la contraseña SMTP',
+          description:
+            'Debes proporcionar la contraseña del servidor SMTP propio.',
+          variant: 'danger',
+        });
+        return;
+      }
+    }
+
     const parsed = SmtpConfigUpsertSchema.safeParse({
       usar_smtp_propio: usarSmtpPropio,
-      host,
-      puerto: Number(puerto),
-      seguridad,
+      host: usarSmtpPropio ? host : 'smtp.gmail.com',
+      puerto: usarSmtpPropio ? Number(puerto) : 465,
+      seguridad: usarSmtpPropio ? seguridad : 'TLS',
       usuario: usuario.trim() || null,
-      password: password.trim() || undefined,
-      remitente_email: remitenteEmail.trim() || null,
+      password: cleanPassword || undefined,
+      remitente_email:
+        (usarSmtpPropio
+          ? remitenteEmail.trim()
+          : remitenteEmail.trim() || usuario.trim()) || null,
       remitente_nombre: remitenteNombre.trim(),
     });
 
@@ -138,11 +181,74 @@ export default function ConfiguracionPage() {
         title: 'Configuración SMTP guardada',
         description: usarSmtpPropio
           ? 'Se utilizará el servidor SMTP personalizado de tu empresa para invitaciones y recuperación de contraseñas.'
-          : 'Se utilizará Google SMTP por defecto para el envío de invitaciones.',
+          : 'Se guardó la llave App Password y la cuenta de Google SMTP para el envío seguro de correos.',
         variant: 'success',
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestSend() {
+    const destino = destinatarioPrueba.trim() || usuario.trim();
+    if (!destino) {
+      toast({
+        title: 'Ingresa un correo destinatario',
+        description:
+          'Especifica el correo donde deseas recibir el mensaje de prueba.',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    const cleanPassword = password.trim().replace(/\s+/g, '');
+
+    setTesting(true);
+    try {
+      const res = await fetch('/api/configuracion/smtp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usar_smtp_propio: usarSmtpPropio,
+          host: usarSmtpPropio ? host : 'smtp.gmail.com',
+          puerto: usarSmtpPropio ? Number(puerto) : 465,
+          seguridad: usarSmtpPropio ? seguridad : 'TLS',
+          usuario: usuario.trim() || undefined,
+          password: cleanPassword || undefined,
+          remitente_email:
+            (usarSmtpPropio
+              ? remitenteEmail.trim()
+              : remitenteEmail.trim() || usuario.trim()) || undefined,
+          remitente_nombre: remitenteNombre.trim(),
+          destinatario_prueba: destino,
+        }),
+      });
+
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({
+          title: 'Falló la prueba SMTP',
+          description:
+            body.error ?? 'No fue posible conectar con el servidor de correo.',
+          variant: 'danger',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Correo de prueba enviado',
+        description: `Se envió con éxito a ${destino}. Verifica tu bandeja de entrada.`,
+        variant: 'success',
+      });
+      await queryClient.invalidateQueries({ queryKey: ['configuracion-smtp'] });
+    } catch {
+      toast({
+        title: 'Error de conexión',
+        description: 'No fue posible comunicarse con el servicio de correo.',
+        variant: 'danger',
+      });
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -225,17 +331,135 @@ export default function ConfiguracionPage() {
                 </div>
 
                 {!usarSmtpPropio ? (
-                  <div className="flex items-start gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
-                    <ShieldCheck
-                      className="mt-0.5 size-5 shrink-0 text-[var(--success)]"
-                      aria-hidden="true"
-                    />
-                    <div className="flex flex-col gap-[var(--s-1)] text-sm">
-                      <span className="font-semibold text-[var(--text)]">
-                        Gestionado automáticamente por Google SMTP (`smtp.gmail.com`)
+                  <div className="flex flex-col gap-[var(--s-4)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
+                    <div className="flex flex-wrap items-center justify-between gap-[var(--s-2)]">
+                      <span className="inline-flex items-center gap-[var(--s-2)] text-sm font-bold text-[var(--text)]">
+                        <ShieldCheck
+                          className="size-4 text-[var(--accent)]"
+                          aria-hidden="true"
+                        />
+                        <span>Google SMTP (Gmail / Google Workspace)</span>
                       </span>
+                      {tienePasswordGuardado ? (
+                        <Badge variant="success">
+                          App Password guardada (AES-256-GCM)
+                        </Badge>
+                      ) : (
+                        <Badge variant="warning">
+                          Requiere App Password
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-[var(--s-2)] text-xs text-[var(--text-2)]">
+                      <span className="inline-flex items-center gap-[var(--s-1)] rounded-[var(--r-sm)] border border-[var(--separator)] bg-[var(--surface)] px-[var(--s-2)] py-[var(--s-1)] font-mono font-medium">
+                        Servidor: smtp.gmail.com
+                      </span>
+                      <span className="inline-flex items-center gap-[var(--s-1)] rounded-[var(--r-sm)] border border-[var(--separator)] bg-[var(--surface)] px-[var(--s-2)] py-[var(--s-1)] font-mono font-medium">
+                        Puerto: 465 (SSL / TLS)
+                      </span>
+                    </div>
+
+                    {/* Guía paso a paso para generar la App Password en Google */}
+                    <div className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-sm)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] text-xs text-[var(--text-2)]">
+                      <div className="flex items-center justify-between gap-[var(--s-2)]">
+                        <span className="font-semibold text-[var(--text)]">
+                          ¿Cómo obtener la App Password en Google?
+                        </span>
+                        <a
+                          href="https://myaccount.google.com/apppasswords"
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-[var(--s-1)] font-semibold text-[var(--accent)] hover:underline"
+                        >
+                          <span>Abrir Google App Passwords</span>
+                          <ExternalLink className="size-3" aria-hidden="true" />
+                        </a>
+                      </div>
+                      <ol className="list-inside list-decimal space-y-1 text-[var(--text-2)]">
+                        <li>
+                          Asegúrate de tener activa la <strong>Verificación en 2 pasos</strong> en tu cuenta de Google.
+                        </li>
+                        <li>
+                          Ingresa a <strong>Seguridad &gt; Contraseñas de aplicaciones</strong> (o usa el enlace directo).
+                        </li>
+                        <li>
+                          En el nombre de la app escribe <code>SM Clock</code> y pulsa <strong>Crear</strong>.
+                        </li>
+                        <li>
+                          Copia la clave de 16 caracteres generada (los espacios se omiten automáticamente) y pégala a continuación.
+                        </li>
+                      </ol>
+                    </div>
+
+                    <div className="flex flex-col gap-[var(--s-1)]">
+                      <label htmlFor="google-smtp-usuario" className="ios-label">
+                        Cuenta de Google / Correo remitente (Gmail o Google Workspace)
+                      </label>
+                      <Input
+                        id="google-smtp-usuario"
+                        name="usuario"
+                        type="email"
+                        spellCheck={false}
+                        placeholder="notificaciones@tuempresa.mx o tuempresa@gmail.com"
+                        value={usuario}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setUsuario(val);
+                          setRemitenteEmail(val);
+                        }}
+                      />
                       <span className="text-xs text-[var(--text-2)]">
-                        Las invitaciones a usuarios Administradores y Operadores, así como los correos de recuperación de contraseña, se envían utilizando el canal seguro de Google SMTP por defecto. Si deseas emplear una cuenta corporativa propia, cambia a &ldquo;SMTP Propio de la Empresa&rdquo;.
+                        Dirección de correo de Google que autenticará el envío de invitaciones y notificaciones ante Google SMTP.
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-[var(--s-1)]">
+                      <div className="flex items-center justify-between">
+                        <label
+                          htmlFor="google-smtp-password"
+                          className="ios-label"
+                        >
+                          Google App Password (Llave de 16 caracteres)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          aria-pressed={showPassword}
+                          className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                        >
+                          {showPassword ? (
+                            <>
+                              <EyeOff className="size-3.5" aria-hidden="true" />
+                              <span>Ocultar</span>
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="size-3.5" aria-hidden="true" />
+                              <span>Mostrar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <Input
+                        id="google-smtp-password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        spellCheck={false}
+                        placeholder={
+                          tienePasswordGuardado
+                            ? '•••••••••••••••• (App Password guardada — dejar en blanco para conservar)'
+                            : 'ej. abcd efgh ijkl mnop'
+                        }
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                      <span className="inline-flex items-center gap-[var(--s-1)] text-xs text-[var(--text-2)]">
+                        <Lock className="size-3" aria-hidden="true" />
+                        <span>
+                          Tu llave App Password se almacena cifrada con AES-256-GCM en la bóveda de credenciales y jamás se expone al cliente.
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -400,8 +624,60 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
 
+                {/* Sección de prueba SMTP */}
+                <div className="rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
+                  <div className="flex flex-col gap-[var(--s-3)]">
+                    <div>
+                      <span className="text-sm font-semibold text-[var(--text)]">
+                        Probar conexión de correo
+                      </span>
+                      <p className="text-xs text-[var(--text-2)]">
+                        Envía un correo de prueba para verificar que la configuración y las credenciales funcionen correctamente.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-[var(--s-2)] sm:flex-row">
+                      <Input
+                        type="email"
+                        spellCheck={false}
+                        placeholder="tu-correo@empresa.com"
+                        value={destinatarioPrueba}
+                        onChange={(e) => setDestinatarioPrueba(e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void handleTestSend()}
+                        disabled={testing || saving}
+                      >
+                        <Send className="size-4" aria-hidden="true" />
+                        <span>
+                          {testing ? 'Enviando prueba…' : 'Enviar prueba'}
+                        </span>
+                      </Button>
+                    </div>
+
+                    {data?.data?.ultima_prueba_exitosa_en ? (
+                      <span className="text-xs text-[var(--success)]">
+                        Última prueba exitosa:{' '}
+                        {new Date(
+                          data.data.ultima_prueba_exitosa_en,
+                        ).toLocaleString('es-MX', {
+                          timeZone: 'America/Tijuana',
+                        })}
+                      </span>
+                    ) : null}
+                    {data?.data?.ultimo_error_prueba ? (
+                      <span className="text-xs text-[var(--danger)]">
+                        Último error reportado: {data.data.ultimo_error_prueba}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div className="flex justify-end pt-[var(--s-2)]">
-                  <Button type="submit" disabled={saving}>
+                  <Button type="submit" disabled={saving || testing}>
                     <Save className="size-4" aria-hidden="true" />
                     <span>
                       {saving

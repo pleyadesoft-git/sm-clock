@@ -51,12 +51,13 @@ export async function POST(request: NextRequest) {
     to: d.destinatario_prueba,
     overrideConfig: {
       usar_smtp_propio: d.usar_smtp_propio,
-      host: d.host,
-      puerto: d.puerto,
-      seguridad: d.seguridad,
+      host: d.usar_smtp_propio ? d.host : 'smtp.gmail.com',
+      puerto: d.usar_smtp_propio ? d.puerto : 465,
+      seguridad: d.usar_smtp_propio ? d.seguridad : 'TLS',
       usuario: d.usuario ?? null,
-      password: d.password,
-      remitente_email: d.remitente_email || null,
+      password: d.password ? d.password.trim().replace(/\s+/g, '') : undefined,
+      remitente_email:
+        d.remitente_email || (!d.usar_smtp_propio ? d.usuario : null),
       remitente_nombre: d.remitente_nombre,
     },
   });

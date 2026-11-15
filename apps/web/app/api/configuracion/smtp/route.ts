@@ -83,9 +83,8 @@ export async function PUT(request: Request): Promise<NextResponse> {
     .eq('tenant_id', tenantId)
     .maybeSingle();
 
-  const hasNewPassword = Boolean(
-    parsed.data.password && parsed.data.password.trim().length > 0,
-  );
+  const rawPassword = parsed.data.password?.trim().replace(/\s+/g, '');
+  const hasNewPassword = Boolean(rawPassword && rawPassword.length > 0);
   const tienePassword = hasNewPassword || Boolean(existing?.tiene_password);
 
   if (parsed.data.usar_smtp_propio && !tienePassword) {
@@ -98,17 +97,30 @@ export async function PUT(request: Request): Promise<NextResponse> {
     );
   }
 
+  const hostToSave = parsed.data.usar_smtp_propio
+    ? parsed.data.host
+    : 'smtp.gmail.com';
+  const puertoToSave = parsed.data.usar_smtp_propio
+    ? parsed.data.puerto
+    : 465;
+  const seguridadToSave = parsed.data.usar_smtp_propio
+    ? parsed.data.seguridad
+    : 'TLS';
+
   const { data: upserted, error: upsertError } = await admin
     .from('configuracion_smtp')
     .upsert(
       {
         tenant_id: tenantId,
         usar_smtp_propio: parsed.data.usar_smtp_propio,
-        host: parsed.data.host,
-        puerto: parsed.data.puerto,
-        seguridad: parsed.data.seguridad,
+        host: hostToSave,
+        puerto: puertoToSave,
+        seguridad: seguridadToSave,
         usuario: parsed.data.usuario?.trim() || null,
-        remitente_email: parsed.data.remitente_email?.trim() || null,
+        remitente_email:
+          parsed.data.remitente_email?.trim() ||
+          parsed.data.usuario?.trim() ||
+          null,
         remitente_nombre: parsed.data.remitente_nombre.trim(),
         activo: true,
         tiene_password: tienePassword,
@@ -128,10 +140,10 @@ export async function PUT(request: Request): Promise<NextResponse> {
     );
   }
 
-  // Si se envió una contraseña nueva, cifrar con AES-256-GCM en `public.credenciales`
-  if (hasNewPassword && parsed.data.password) {
+  // Si se envió una contraseña nueva o App Password, cifrar con AES-256-GCM en `public.credenciales`
+  if (hasNewPassword && rawPassword) {
     const encrypted = encryptCredentialSecret({
-      plaintext: parsed.data.password.trim(),
+      plaintext: rawPassword,
       tenantId,
       masterKeyHex: getMasterKeyHex(),
     });
