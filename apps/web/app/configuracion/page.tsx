@@ -203,6 +203,16 @@ export default function ConfiguracionPage() {
 
     const cleanPassword = password.trim().replace(/\s+/g, '');
 
+    if (!tienePasswordGuardado && !cleanPassword) {
+      toast({
+        title: 'Falta la contraseña o App Password',
+        description:
+          'Ingresa tu Google App Password y guarda los cambios antes de enviar la prueba.',
+        variant: 'danger',
+      });
+      return;
+    }
+
     setTesting(true);
     try {
       const res = await fetch('/api/configuracion/smtp/test', {
@@ -237,7 +247,7 @@ export default function ConfiguracionPage() {
 
       toast({
         title: 'Correo de prueba enviado',
-        description: `Se envió con éxito a ${destino}. Verifica tu bandeja de entrada.`,
+        description: `Se envió con éxito a ${destino}. Revisa tu bandeja de entrada o Spam.`,
         variant: 'success',
       });
       await queryClient.invalidateQueries({ queryKey: ['configuracion-smtp'] });
@@ -643,6 +653,12 @@ export default function ConfiguracionPage() {
                         placeholder="tu-correo@empresa.com"
                         value={destinatarioPrueba}
                         onChange={(e) => setDestinatarioPrueba(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleTestSend();
+                          }
+                        }}
                         className="flex-1"
                       />
                       <Button
@@ -657,6 +673,10 @@ export default function ConfiguracionPage() {
                         </span>
                       </Button>
                     </div>
+
+                    <p className="text-xs text-[var(--text-2)]">
+                      Nota: Al enviar a cuentas de Gmail, asegúrate de revisar también la carpeta de <strong>Spam / Correo no deseado</strong>.
+                    </p>
 
                     {data?.data?.ultima_prueba_exitosa_en ? (
                       <span className="text-xs text-[var(--success)]">

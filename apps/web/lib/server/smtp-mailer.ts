@@ -248,9 +248,13 @@ async function deliverViaSmtpSocket(
     const boundary = `smclock_${Date.now().toString(36)}`;
     const encodedSubject = `=?UTF-8?B?${Buffer.from(params.subject, 'utf8').toString('base64')}?=`;
     const encodedFromName = `=?UTF-8?B?${Buffer.from(config.fromName, 'utf8').toString('base64')}?=`;
+    const dateHeader = new Date().toUTCString();
+    const messageId = `<smclock.${Date.now()}.${Math.random().toString(36).slice(2)}@gmail.com>`;
 
     const mimeMessage = [
-      `From: "${encodedFromName}" <${config.fromEmail}>`,
+      `Date: ${dateHeader}`,
+      `Message-ID: ${messageId}`,
+      `From: ${encodedFromName} <${config.fromEmail}>`,
       `To: <${params.to}>`,
       `Subject: ${encodedSubject}`,
       'MIME-Version: 1.0',
@@ -506,9 +510,11 @@ export async function sendSmtpTestEmail(params: {
   let result: SendEmailResult;
   if (isPlaceholderDefault) {
     result = {
-      delivered: true,
-      simulated: true,
+      delivered: false,
+      simulated: false,
       provider: effectiveConfig.provider,
+      error:
+        'No se ha configurado la App Password de Google o contraseña SMTP para este tenant.',
     };
   } else {
     try {
@@ -524,25 +530,15 @@ export async function sendSmtpTestEmail(params: {
         provider: effectiveConfig.provider,
       };
     } catch (err) {
-      if (process.env['NODE_ENV'] !== 'production') {
-        result = {
-          delivered: true,
-          simulated: true,
-          provider: effectiveConfig.provider,
-          error:
-            err instanceof Error ? err.message : 'SMTP simulado en desarrollo',
-        };
-      } else {
-        result = {
-          delivered: false,
-          simulated: false,
-          provider: effectiveConfig.provider,
-          error:
-            err instanceof Error
-              ? err.message
-              : 'No se pudo conectar al servidor SMTP',
-        };
-      }
+      result = {
+        delivered: false,
+        simulated: false,
+        provider: effectiveConfig.provider,
+        error:
+          err instanceof Error
+            ? err.message
+            : 'No se pudo conectar al servidor SMTP',
+      };
     }
   }
 

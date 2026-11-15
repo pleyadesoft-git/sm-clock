@@ -61,7 +61,7 @@ describe('smtp-mailer Google SMTP and App Password resolution', () => {
     expect(defaultSmtp.security).toBe('TLS');
   });
 
-  it('normalizes Google App Password by removing spaces in test send', async () => {
+  it('normalizes Google App Password and accurately captures rejection on invalid credentials', async () => {
     const { sendSmtpTestEmail } = await import('./smtp-mailer');
 
     const result = await sendSmtpTestEmail({
@@ -79,6 +79,7 @@ describe('smtp-mailer Google SMTP and App Password resolution', () => {
     });
 
     expect(result.provider).toBe('GOOGLE_DEFAULT');
-    expect(result.delivered).toBe(true);
+    expect(result.delivered).toBe(false);
+    expect(result.error).toBeDefined();
   });
 });
