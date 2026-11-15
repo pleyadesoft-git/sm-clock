@@ -227,7 +227,7 @@ export default function MfaVerificationPage() {
       if (!parsedEnroll.success) {
         setErrorMessage(
           parsedEnroll.error.issues[0]?.message ??
-            'Ingresa un nombre válido para el dispositivo biométrico',
+          'Ingresa un nombre válido para el dispositivo biométrico',
         );
         return;
       }
@@ -242,21 +242,30 @@ export default function MfaVerificationPage() {
         },
         platformBiometricAvailable
           ? {
-              authenticatorSelection: {
-                authenticatorAttachment: 'platform',
-                userVerification: 'preferred',
-              },
-            }
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform',
+              userVerification: 'preferred',
+            },
+          }
           : undefined,
       );
 
       if (error) {
         console.error('Error al registrar WebAuthn:', error);
-        setErrorMessage(
-          error.message
-            ? `Error WebAuthn: ${error.message}`
-            : 'No se pudo registrar el factor biométrico WebAuthn. Verifica que Passkeys esté habilitado en el panel de Supabase o que tu dispositivo tenga Touch ID / Face ID activo.',
-        );
+        if (
+          error.message?.includes('disabled for WebAuthn') ||
+          error.message?.includes('mfa_web_authn_enroll_not_enabled')
+        ) {
+          setErrorMessage(
+            'En Supabase Cloud, el segundo factor de seguridad (MFA) está configurado exclusivamente para Códigos de Aplicación (TOTP). Selecciona la pestaña "Código App TOTP" para escanear el código QR con la cámara de tu iPhone o guardarlo en tu Llavero de iCloud / Face ID.',
+          );
+        } else {
+          setErrorMessage(
+            error.message
+              ? `Error WebAuthn: ${error.message}`
+              : 'No se pudo registrar el factor biométrico WebAuthn. Verifica que tu dispositivo tenga Touch ID / Face ID activo.',
+          );
+        }
         return;
       }
 
@@ -290,7 +299,7 @@ export default function MfaVerificationPage() {
             </div>
             <CardTitle>Verificación en dos pasos (MFA)</CardTitle>
             <CardDescription>
-              Obligatorio para cuentas de SUPER_ADMIN y ADMIN_EMPRESA · Usa Biométrico o App TOTP
+              Obligatorio para cuentas de Administrador · Usa Biométrico o App TOTP
             </CardDescription>
           </CardHeader>
 
@@ -313,11 +322,11 @@ export default function MfaVerificationPage() {
                     options={[
                       {
                         value: 'WEBAUTHN',
-                        label: 'Biométrico / WebAuthn',
+                        label: 'Biométrico',
                       },
                       {
                         value: 'TOTP',
-                        label: 'Código App (TOTP)',
+                        label: 'Código App',
                       },
                     ]}
                   />
@@ -393,7 +402,7 @@ export default function MfaVerificationPage() {
                         {isVerifying
                           ? 'Esperando confirmación biométrica…'
                           : webauthnFactorId
-                            ? 'Verificar con Biométrico / WebAuthn'
+                            ? 'Verificar con Biométrico'
                             : 'Registrar y verificar Biométrico'}
                       </span>
                     </Button>
@@ -412,7 +421,7 @@ export default function MfaVerificationPage() {
                         </p>
                         <img
                           src={qrCodeSvg}
-                          alt="Código QR para configurar autenticador TOTP"
+                          alt="Código QR para configurar autenticador"
                           className="size-44 rounded-[var(--r-md)] bg-white p-[var(--s-2)]"
                         />
                         {totpSecret && (

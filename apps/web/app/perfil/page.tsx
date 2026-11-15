@@ -171,7 +171,7 @@ export default function PerfilUsuarioPage() {
   return (
     <AppShell
       title="Mi Perfil y Seguridad"
-      subtitle="Administra tus datos principales (nombre, correo), usuario + contraseña, datos biométricos y llaves WebAuthn"
+      subtitle="Administra tus datos principales (nombre, correo), usuario + contraseña, datos biométricos y llaves"
       mode={shellMode}
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-[var(--s-6)]">
