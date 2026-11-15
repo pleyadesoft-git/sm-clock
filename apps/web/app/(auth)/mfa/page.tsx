@@ -2,17 +2,14 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Fingerprint, KeyRound, ShieldCheck } from 'lucide-react';
+import { KeyRound, ShieldCheck } from 'lucide-react';
 import {
   MfaVerifyRequestSchema,
   sanitizeRedirectPath,
   UserRoleSchema,
-  WebAuthnFactorEnrollSchema,
 } from '@sm-clock/contracts';
-import { detectWebAuthnCapabilities } from '@/lib/auth/webauthn-client';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -22,33 +19,31 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { SegmentedControl } from '@/components/ui/segmented-control';
 
-type MfaMethodTab = 'TOTP' | 'WEBAUTHN';
+/*
+// =========================================================================
+// SOPORTE FUTURO: WebAuthn / Biometría para MFA (AAL2)
+// -------------------------------------------------------------------------
+// Supabase Cloud soporta Passkeys para inicio de sesión primario, pero en MFA (AAL2)
+// mantiene 'mfa_web_authn_enroll_enabled' desactivado por defecto en la nube.
+// Cuando Supabase libere soporte de WebAuthn como segundo factor MFA en GoTrue,
+// re-importar:
+//   import { Fingerprint } from 'lucide-react';
+//   import { WebAuthnFactorEnrollSchema } from '@sm-clock/contracts';
+//   import { detectWebAuthnCapabilities } from '@/lib/auth/webauthn-client';
+//   import { SegmentedControl } from '@/components/ui/segmented-control';
+//   import { Badge } from '@/components/ui/badge';
+// =========================================================================
+*/
 
 export default function MfaVerificationPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = React.useState<MfaMethodTab>('TOTP');
-  const [webauthnSupported, setWebauthnSupported] = React.useState(false);
-  const [platformBiometricAvailable, setPlatformBiometricAvailable] =
-    React.useState(false);
 
   // Estado TOTP
   const [totpFactorId, setTotpFactorId] = React.useState<string>('');
   const [qrCodeSvg, setQrCodeSvg] = React.useState<string | null>(null);
   const [totpSecret, setTotpSecret] = React.useState<string | null>(null);
   const [code, setCode] = React.useState('');
-
-  // Estado WebAuthn / Biométrico
-  const [webauthnFactorId, setWebauthnFactorId] = React.useState<string | null>(
-    null,
-  );
-  const [webauthnFactorName, setWebauthnFactorName] = React.useState<
-    string | null
-  >(null);
-  const [newDeviceName, setNewDeviceName] = React.useState(
-    'Biométrico del dispositivo (Touch ID / Face ID / Windows Hello)',
-  );
 
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -76,12 +71,6 @@ export default function MfaVerificationPage() {
     let active = true;
     const initMfa = async () => {
       try {
-        const caps = await detectWebAuthnCapabilities();
-        if (active) {
-          setWebauthnSupported(caps.webauthnSupported);
-          setPlatformBiometricAvailable(caps.passkeyPlatformAuthenticator);
-        }
-
         const supabase = createSupabaseBrowserClient();
         const { data: factors, error } = await supabase.auth.mfa.listFactors();
         if (error) {
@@ -91,24 +80,13 @@ export default function MfaVerificationPage() {
           return;
         }
 
-        const verifiedWebAuthn = factors.webauthn?.[0];
-        if (verifiedWebAuthn && active) {
-          setWebauthnFactorId(verifiedWebAuthn.id);
-          setWebauthnFactorName(
-            verifiedWebAuthn.friendly_name ?? 'Llave Biométrica Registrada',
-          );
-          if (caps.webauthnSupported) {
-            setActiveTab('WEBAUTHN');
-          }
-        }
-
         const verifiedTotp = factors.totp[0];
         if (verifiedTotp) {
           if (active) setTotpFactorId(verifiedTotp.id);
           return;
         }
 
-        // Limpiar factores previos no verificados para evitar colisión de friendlyName al recargar
+        // Limpiar factores previos no verificados para evitar colisión al recargar
         for (const f of factors.all) {
           if (f.status === 'unverified') {
             await supabase.auth.mfa.unenroll({ factorId: f.id });
@@ -122,7 +100,7 @@ export default function MfaVerificationPage() {
           });
 
         if (enrollError || !enrolled) {
-          if (active && !verifiedWebAuthn) {
+          if (active) {
             setErrorMessage('No fue posible iniciar el enrolamiento MFA TOTP.');
           }
           return;
@@ -191,95 +169,14 @@ export default function MfaVerificationPage() {
     }
   };
 
-  const handleWebAuthnVerifyOrRegister = async () => {
-    setErrorMessage(null);
-    setIsVerifying(true);
-
-    try {
-      const supabase = createSupabaseBrowserClient();
-
-      if (webauthnFactorId) {
-        const { error } = await supabase.auth.mfa.webauthn.authenticate({
-          factorId: webauthnFactorId,
-          webauthn: {
-            rpId: window.location.hostname,
-            rpOrigins: [window.location.origin],
-          },
-        });
-
-        if (error) {
-          console.error('Error al autenticar WebAuthn:', error);
-          setErrorMessage(
-            error.message
-              ? `Error al verificar biométrico: ${error.message}`
-              : 'No se pudo verificar tu huella, rostro o llave de seguridad. Intenta nuevamente o usa código TOTP.',
-          );
-          return;
-        }
-
-        await redirectAfterMfaSuccess();
-        return;
-      }
-
-      const parsedEnroll = WebAuthnFactorEnrollSchema.safeParse({
-        friendlyName: newDeviceName,
-      });
-      if (!parsedEnroll.success) {
-        setErrorMessage(
-          parsedEnroll.error.issues[0]?.message ??
-          'Ingresa un nombre válido para el dispositivo biométrico',
-        );
-        return;
-      }
-
-      const { error } = await supabase.auth.mfa.webauthn.register(
-        {
-          friendlyName: parsedEnroll.data.friendlyName,
-          webauthn: {
-            rpId: window.location.hostname,
-            rpOrigins: [window.location.origin],
-          },
-        },
-        platformBiometricAvailable
-          ? {
-            authenticatorSelection: {
-              authenticatorAttachment: 'platform',
-              userVerification: 'preferred',
-            },
-          }
-          : undefined,
-      );
-
-      if (error) {
-        console.error('Error al registrar WebAuthn:', error);
-        if (
-          error.message?.includes('disabled for WebAuthn') ||
-          error.message?.includes('mfa_web_authn_enroll_not_enabled')
-        ) {
-          setErrorMessage(
-            'En Supabase Cloud, el segundo factor de seguridad (MFA) está configurado exclusivamente para Códigos de Aplicación (TOTP). Selecciona la pestaña "Código App TOTP" para escanear el código QR con la cámara de tu iPhone o guardarlo en tu Llavero de iCloud / Face ID.',
-          );
-        } else {
-          setErrorMessage(
-            error.message
-              ? `Error WebAuthn: ${error.message}`
-              : 'No se pudo registrar el factor biométrico WebAuthn. Verifica que tu dispositivo tenga Touch ID / Face ID activo.',
-          );
-        }
-        return;
-      }
-
-      await redirectAfterMfaSuccess();
-    } catch (err) {
-      console.error('Excepción en ceremonia WebAuthn:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setErrorMessage(
-        `Error al ejecutar la ceremonia biométrica WebAuthn: ${msg}`,
-      );
-    } finally {
-      setIsVerifying(false);
-    }
-  };
+  /*
+  // =========================================================================
+  // RESERVADO PARA EL FUTURO: Manejador WebAuthn MFA en Supabase
+  // -------------------------------------------------------------------------
+  // Descomentar cuando Supabase Cloud habilite 'mfa_web_authn_enroll_enabled'.
+  // =========================================================================
+  const handleWebAuthnVerifyOrRegister = async () => { ... };
+  */
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--bg)] p-[var(--s-4)] text-[var(--text)]">
@@ -299,7 +196,7 @@ export default function MfaVerificationPage() {
             </div>
             <CardTitle>Verificación en dos pasos (MFA)</CardTitle>
             <CardDescription>
-              Obligatorio para cuentas de Administrador · Usa Biométrico o App TOTP
+              Obligatorio para cuentas de Administrador · App de autenticación (TOTP)
             </CardDescription>
           </CardHeader>
 
@@ -309,183 +206,92 @@ export default function MfaVerificationPage() {
                 Preparando verificación de seguridad…
               </p>
             ) : (
-              <>
-                {webauthnSupported ? (
-                  <SegmentedControl
-                    ariaLabel="Seleccionar método de segundo factor MFA"
-                    value={activeTab}
-                    onChange={(val) => {
-                      setActiveTab(val);
-                      setErrorMessage(null);
-                    }}
-                    className="w-full justify-center"
-                    options={[
-                      {
-                        value: 'WEBAUTHN',
-                        label: 'Biométrico',
-                      },
-                      {
-                        value: 'TOTP',
-                        label: 'Código App',
-                      },
-                    ]}
-                  />
-                ) : null}
-
-                {activeTab === 'WEBAUTHN' && webauthnSupported ? (
-                  <div className="flex flex-col gap-[var(--s-4)]">
-                    <div className="flex flex-col items-center gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)] text-center">
-                      <div className="flex size-12 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--accent)] shadow-[var(--shadow-1)]">
-                        <Fingerprint
-                          className="size-6"
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                        />
+              <form
+                noValidate
+                onSubmit={handleVerifyTotp}
+                className="flex flex-col gap-[var(--s-4)]"
+              >
+                {qrCodeSvg ? (
+                  <div className="flex flex-col items-center gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
+                    <p className="text-center text-xs text-[var(--text-2)]">
+                      Escanea este código QR con Google Authenticator,
+                      1Password, Microsoft Authenticator o Llavero de iCloud:
+                    </p>
+                    <img
+                      src={qrCodeSvg}
+                      alt="Código QR para configurar autenticador"
+                      className="size-44 rounded-[var(--r-md)] bg-white p-[var(--s-2)]"
+                    />
+                    {totpSecret && (
+                      <div className="w-full text-center">
+                        <span className="text-xs text-[var(--text-2)]">
+                          Clave manual:{' '}
+                        </span>
+                        <code className="select-all font-mono text-xs font-bold text-[var(--text)]">
+                          {totpSecret}
+                        </code>
                       </div>
-
-                      {webauthnFactorId ? (
-                        <div className="flex flex-col items-center gap-[var(--s-1)]">
-                          <Badge variant="success">Dispositivo verificado</Badge>
-                          <p className="text-sm font-semibold text-[var(--text)]">
-                            {webauthnFactorName}
-                          </p>
-                          <p className="text-xs text-[var(--text-2)]">
-                            Confirma tu identidad con Touch ID, Face ID, Windows
-                            Hello o tu llave de seguridad.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="flex w-full flex-col gap-[var(--s-2)] text-left">
-                          <p className="text-center text-xs text-[var(--text-2)]">
-                            Registra la huella o rostro de tu dispositivo como
-                            segundo factor criptográfico (WebAuthn):
-                          </p>
-                          <label
-                            htmlFor="webauthn-device-name"
-                            className="ios-label"
-                          >
-                            Nombre del dispositivo biométrico
-                          </label>
-                          <Input
-                            id="webauthn-device-name"
-                            name="webauthn-device-name"
-                            value={newDeviceName}
-                            onChange={(e) => setNewDeviceName(e.target.value)}
-                            placeholder="Ej. MacBook Pro Touch ID"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {errorMessage ? (
-                      <div
-                        role="alert"
-                        aria-live="polite"
-                        className="rounded-[var(--r-md)] bg-[var(--danger-bg)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-medium text-[var(--danger)]"
-                      >
-                        {errorMessage}
-                      </div>
-                    ) : null}
-
-                    <Button
-                      type="button"
-                      disabled={isVerifying}
-                      onClick={() => void handleWebAuthnVerifyOrRegister()}
-                      className="w-full"
-                    >
-                      <Fingerprint
-                        className="size-4"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <span>
-                        {isVerifying
-                          ? 'Esperando confirmación biométrica…'
-                          : webauthnFactorId
-                            ? 'Verificar con Biométrico'
-                            : 'Registrar y verificar Biométrico'}
-                      </span>
-                    </Button>
+                    )}
                   </div>
                 ) : (
-                  <form
-                    noValidate
-                    onSubmit={handleVerifyTotp}
-                    className="flex flex-col gap-[var(--s-4)]"
-                  >
-                    {qrCodeSvg ? (
-                      <div className="flex flex-col items-center gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
-                        <p className="text-center text-xs text-[var(--text-2)]">
-                          Escanea este código QR con Google Authenticator,
-                          1Password o Authy:
-                        </p>
-                        <img
-                          src={qrCodeSvg}
-                          alt="Código QR para configurar autenticador"
-                          className="size-44 rounded-[var(--r-md)] bg-white p-[var(--s-2)]"
-                        />
-                        {totpSecret && (
-                          <div className="w-full text-center">
-                            <span className="text-xs text-[var(--text-2)]">
-                              Clave manual:{' '}
-                            </span>
-                            <code className="select-all font-mono text-xs font-bold text-[var(--text)]">
-                              {totpSecret}
-                            </code>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-
-                    <div className="flex flex-col gap-[var(--s-1)]">
-                      <label htmlFor="totp-code" className="ios-label">
-                        Código de 6 dígitos
-                      </label>
-                      <Input
-                        id="totp-code"
-                        name="totp-code"
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        autoComplete="one-time-code"
-                        placeholder="123456"
-                        className="text-center font-mono text-lg tracking-widest"
-                        value={code}
-                        onChange={(e) =>
-                          setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
-                        }
-                      />
+                  <div className="flex items-start gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-3)] text-xs text-[var(--text-2)]">
+                    <KeyRound className="size-4 shrink-0 text-[var(--accent)] mt-0.5" aria-hidden="true" />
+                    <div>
+                      <p className="font-semibold text-[var(--text)]">Autenticador ya vinculado</p>
+                      <p className="mt-[var(--s-1)]">
+                        Abre la app de autenticación que vinculaste previamente (Google Authenticator, Microsoft Authenticator o Contraseñas de tu iPhone) e introduce el código temporal de 6 dígitos.
+                      </p>
                     </div>
-
-                    {errorMessage ? (
-                      <div
-                        role="alert"
-                        aria-live="polite"
-                        className="rounded-[var(--r-md)] bg-[var(--danger-bg)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-medium text-[var(--danger)]"
-                      >
-                        {errorMessage}
-                      </div>
-                    ) : null}
-
-                    <Button
-                      type="submit"
-                      disabled={isVerifying || !totpFactorId}
-                      className="w-full"
-                    >
-                      <KeyRound
-                        className="size-4"
-                        strokeWidth={1.75}
-                        aria-hidden="true"
-                      />
-                      <span>
-                        {isVerifying
-                          ? 'Verificando código…'
-                          : 'Confirmar y continuar'}
-                      </span>
-                    </Button>
-                  </form>
+                  </div>
                 )}
-              </>
+
+                <div className="flex flex-col gap-[var(--s-1)]">
+                  <label htmlFor="totp-code" className="ios-label">
+                    Código de 6 dígitos
+                  </label>
+                  <Input
+                    id="totp-code"
+                    name="totp-code"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    className="text-center font-mono text-lg tracking-widest"
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                    }
+                  />
+                </div>
+
+                {errorMessage ? (
+                  <div
+                    role="alert"
+                    aria-live="polite"
+                    className="rounded-[var(--r-md)] bg-[var(--danger-bg)] px-[var(--s-3)] py-[var(--s-2)] text-xs font-medium text-[var(--danger)]"
+                  >
+                    {errorMessage}
+                  </div>
+                ) : null}
+
+                <Button
+                  type="submit"
+                  disabled={isVerifying || !totpFactorId}
+                  className="w-full"
+                >
+                  <KeyRound
+                    className="size-4"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {isVerifying
+                      ? 'Verificando código…'
+                      : 'Confirmar y continuar'}
+                  </span>
+                </Button>
+              </form>
             )}
           </CardContent>
         </Card>
