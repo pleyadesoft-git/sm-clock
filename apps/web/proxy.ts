@@ -57,6 +57,14 @@ export async function proxy(request: NextRequest) {
     },
   });
 
+  function redirectWithCookies(url: URL | string): NextResponse {
+    const redirectRes = NextResponse.redirect(url);
+    for (const cookie of response.cookies.getAll()) {
+      redirectRes.cookies.set(cookie.name, cookie.value, cookie);
+    }
+    return redirectRes;
+  }
+
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
@@ -88,9 +96,7 @@ export async function proxy(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
     }
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    loginUrl.search = '';
+    const loginUrl = new URL('/login', getRequestOrigin(request));
     if (isSuperAdminOnlyPath(pathname)) {
       loginUrl.searchParams.set('mode', 'super_admin');
     } else if (pathname !== '/' && !pathname.startsWith('/mfa')) {
@@ -99,7 +105,7 @@ export async function proxy(request: NextRequest) {
         sanitizeRedirectPath(`${pathname}${request.nextUrl.search}`),
       );
     }
-    return NextResponse.redirect(loginUrl);
+    return redirectWithCookies(loginUrl);
   }
 
   // 4. Usuario autenticado sin `rol` sincronizado aún en `app_metadata`
@@ -120,16 +126,10 @@ export async function proxy(request: NextRequest) {
           { status: 403 },
         );
       }
-      const fallbackUrl = request.nextUrl.clone();
-      fallbackUrl.pathname = '/dashboard';
-      fallbackUrl.search = '';
-      return NextResponse.redirect(fallbackUrl);
+      return redirectWithCookies(new URL('/dashboard', getRequestOrigin(request)));
     }
     if (pathname === '/') {
-      const fallbackUrl = request.nextUrl.clone();
-      fallbackUrl.pathname = '/dashboard';
-      fallbackUrl.search = '';
-      return NextResponse.redirect(fallbackUrl);
+      return redirectWithCookies(new URL('/dashboard', getRequestOrigin(request)));
     }
     return response;
   }
@@ -145,7 +145,13 @@ export async function proxy(request: NextRequest) {
       aalData?.currentLevel !== 'aal2' && (!isDev || hasEnrolledFactor);
 
     if (requiresMfaChallenge) {
-      if (pathname.startsWith('/mfa') || pathname === '/api/auth/me') {
+      if (
+        pathname.startsWith('/mfa') ||
+        pathname === '/api/auth/me' ||
+        (isAuthGuestOnlyPath(pathname) &&
+          (request.nextUrl.searchParams.has('logged_out') ||
+            request.nextUrl.searchParams.has('error')))
+      ) {
         return response;
       }
       if (pathname.startsWith('/api/')) {
@@ -154,16 +160,14 @@ export async function proxy(request: NextRequest) {
           { status: 403 },
         );
       }
-      const mfaUrl = request.nextUrl.clone();
-      mfaUrl.pathname = '/mfa';
-      mfaUrl.search = '';
+      const mfaUrl = new URL('/mfa', getRequestOrigin(request));
       if (pathname !== '/' && !isAuthGuestOnlyPath(pathname)) {
         mfaUrl.searchParams.set(
           'next',
           sanitizeRedirectPath(`${pathname}${request.nextUrl.search}`, rol),
         );
       }
-      return NextResponse.redirect(mfaUrl);
+      return redirectWithCookies(mfaUrl);
     }
 
     // Si ya completó MFA (aal2) e intenta abrir /mfa, redirigir a su ruta autorizada
@@ -172,7 +176,7 @@ export async function proxy(request: NextRequest) {
         request.nextUrl.searchParams.get('next'),
         rol,
       );
-      return NextResponse.redirect(
+      return redirectWithCookies(
         new URL(targetPath, getRequestOrigin(request)),
       );
     }
@@ -182,7 +186,7 @@ export async function proxy(request: NextRequest) {
       request.nextUrl.searchParams.get('next'),
       rol,
     );
-    return NextResponse.redirect(
+    return redirectWithCookies(
       new URL(targetPath, getRequestOrigin(request)),
     );
   }
@@ -197,24 +201,23 @@ export async function proxy(request: NextRequest) {
       request.nextUrl.searchParams.get('next'),
       rol,
     );
-    return NextResponse.redirect(
+    return redirectWithCookies(
       new URL(targetPath, getRequestOrigin(request)),
     );
   }
 
   // 7. Resolución segura de raíz `/` y `/admin` según el rol verificado
   if (pathname === '/') {
-    const dest = request.nextUrl.clone();
-    dest.pathname = getDefaultHomeForRole(rol);
-    dest.search = '';
-    return NextResponse.redirect(dest);
+    const dest = new URL(getDefaultHomeForRole(rol), getRequestOrigin(request));
+    return redirectWithCookies(dest);
   }
 
   if (pathname === '/admin') {
-    const dest = request.nextUrl.clone();
-    dest.pathname = rol === 'SUPER_ADMIN' ? '/admin/empresas' : '/dashboard';
-    dest.search = '';
-    return NextResponse.redirect(dest);
+    const dest = new URL(
+      rol === 'SUPER_ADMIN' ? '/admin/empresas' : '/dashboard',
+      getRequestOrigin(request),
+    );
+    return redirectWithCookies(dest);
   }
 
   // 8. Guard de autorización por rol en todas las rutas protegidas (lista blanca)
@@ -225,10 +228,8 @@ export async function proxy(request: NextRequest) {
         : 'Acceso restringido a usuarios Administradores. El rol Operador solo puede consultar movimientos.';
       return NextResponse.json({ error: errorMsg }, { status: 403 });
     }
-    const deniedUrl = request.nextUrl.clone();
-    deniedUrl.pathname = getDefaultHomeForRole(rol);
-    deniedUrl.search = '';
-    return NextResponse.redirect(deniedUrl);
+    const deniedUrl = new URL(getDefaultHomeForRole(rol), getRequestOrigin(request));
+    return redirectWithCookies(deniedUrl);
   }
 
   return response;

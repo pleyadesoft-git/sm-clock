@@ -1,0 +1,72 @@
+name: Build Windows Agent (.exe)
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-agent-windows.yml'
+      - 'packages/contracts/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-agent-windows.yml'
+      - 'packages/contracts/**'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build & Test sm-clock-agent.exe (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'agent/pyproject.toml'
+
+      - name: Install build dependencies
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
+
+      - name: Run Pytest suite on Windows
+        working-directory: agent
+        run: |
+          pytest -v
+
+      - name: Compile Executable with PyInstaller
+        working-directory: agent
+        run: |
+          pyinstaller --clean -y agent.spec
+
+      - name: Verify compiled executable
+        working-directory: agent
+        run: |
+          .\dist\sm-clock-agent.exe status
+          .\dist\sm-clock-agent.exe --help
+
+      - name: Prepare distribution bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ./release-bundle -Force
+          Copy-Item ./agent/dist/sm-clock-agent.exe ./release-bundle/
+          Copy-Item ./agent/scripts/install-service.bat ./release-bundle/
+          Copy-Item ./agent/scripts/install-service.ps1 ./release-bundle/
+          Copy-Item ./agent/scripts/uninstall-service.bat ./release-bundle/
+          Copy-Item ./agent/icon.ico ./release-bundle/
+
+      - name: Upload Windows Agent Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm-clock-agent-windows-x64
+          path: ./release-bundle/
+          retention-days: 30
+          if-no-files-found: error

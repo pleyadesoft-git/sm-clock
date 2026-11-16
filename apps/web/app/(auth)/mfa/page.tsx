@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
 import { KeyRound, ShieldCheck } from 'lucide-react';
 import {
   MfaVerifyRequestSchema,
@@ -37,7 +36,7 @@ import { Input } from '@/components/ui/input';
 */
 
 export default function MfaVerificationPage() {
-  const router = useRouter();
+  const codeInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Estado TOTP
   const [totpFactorId, setTotpFactorId] = React.useState<string>('');
@@ -64,8 +63,10 @@ export default function MfaVerificationPage() {
       parsedRol.success ? parsedRol.data : null,
     );
 
-    router.replace(safeDestination);
-  }, [router]);
+    // Navegación completa para asegurar que las cookies AAL2 de la sesión se envíen
+    // de inmediato en los encabezados HTTP al middleware y al servidor sin condiciones de carrera.
+    window.location.href = safeDestination;
+  }, []);
 
   React.useEffect(() => {
     let active = true;
@@ -130,6 +131,12 @@ export default function MfaVerificationPage() {
       active = false;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!isLoading && totpFactorId) {
+      codeInputRef.current?.focus();
+    }
+  }, [isLoading, totpFactorId]);
 
   const handleVerifyTotp = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -250,12 +257,14 @@ export default function MfaVerificationPage() {
                     Código de 6 dígitos
                   </label>
                   <Input
+                    ref={codeInputRef}
                     id="totp-code"
                     name="totp-code"
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
                     autoComplete="one-time-code"
+                    autoFocus
                     placeholder="123456"
                     className="text-center font-mono text-lg tracking-widest"
                     value={code}

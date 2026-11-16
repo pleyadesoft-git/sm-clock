@@ -21,12 +21,8 @@ function sanitizeAvatarUrl(raw: unknown): string | null {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const auth = await requireAuthenticatedUser();
+  const auth = await requireAuthenticatedUser({ allowPendingMfa: true });
   if (!auth.ok) {
-    if (auth.status === 403) {
-      const supabase = await createSupabaseServerClient();
-      await supabase.auth.signOut();
-    }
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
@@ -81,6 +77,7 @@ export async function GET(): Promise<NextResponse> {
       tenantId: auth.user.tenantId,
       authProvider,
       avatarUrl: avatarCandidate,
+      aal: auth.user.aal,
     },
   });
 }

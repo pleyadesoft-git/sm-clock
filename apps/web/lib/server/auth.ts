@@ -204,7 +204,9 @@ export async function claimPendingInvitationForUser(params: {
  * y valida que el usuario cuente con un perfil activo o invitación válida en el tenant.
  * REGLA DURA #2: `tenant_id` jamás viene del body/query; sale del JWT / perfil autenticado.
  */
-export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
+export async function getAuthenticatedContext(options?: {
+  allowPendingMfa?: boolean;
+}): Promise<AuthenticatedContext> {
   const isDev = process.env['NODE_ENV'] === 'development';
   const supabase = await createSupabaseServerClient();
 
@@ -336,6 +338,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
 
   const hasEnrolledFactor = aalData.nextLevel === 'aal2';
   if (
+    !options?.allowPendingMfa &&
     roleRequiresMfa(rol) &&
     currentAal !== 'aal2' &&
     (!isDev || hasEnrolledFactor)
@@ -384,12 +387,14 @@ export async function requireRoles(
   return ctx;
 }
 
-export async function requireAuthenticatedUser(): Promise<
+export async function requireAuthenticatedUser(options?: {
+  allowPendingMfa?: boolean;
+}): Promise<
   | { ok: true; user: AuthenticatedContext }
   | { ok: false; status: 401 | 403; message: string }
 > {
   try {
-    const user = await getAuthenticatedContext();
+    const user = await getAuthenticatedContext(options);
     return { ok: true, user };
   } catch (err) {
     if (err instanceof AuthError) {
