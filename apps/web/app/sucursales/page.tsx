@@ -21,6 +21,7 @@ import type { z } from 'zod';
 
 type SucursalFormInput = z.input<typeof SucursalCreateSchema>;
 type SucursalFormOutput = z.output<typeof SucursalCreateSchema>;
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -58,6 +59,8 @@ export default function SucursalesPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('clave');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
 
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<SucursalRow | null>(null);
@@ -75,12 +78,14 @@ export default function SucursalesPage() {
   });
 
   const { data, isLoading } = useQuery<SucursalesResponse>({
-    queryKey: ['sucursales-list', page, pageSize, search],
+    queryKey: ['sucursales-list', page, pageSize, search, sortBy, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
+        sortBy,
+        sortDir,
       });
       const res = await fetch(`/api/sucursales?${params.toString()}`);
       if (!res.ok) {
@@ -88,6 +93,11 @@ export default function SucursalesPage() {
       }
       return (await res.json()) as SucursalesResponse;
     },
+  });
+
+  const { status: realtimeState } = useTenantChannel({
+    queryKeysToInvalidate: [['sucursales-list']],
+    events: ['*'],
   });
 
   function openNewSheet() {
@@ -245,6 +255,7 @@ export default function SucursalesPage() {
       title="Sucursales y Plantas"
       subtitle="Ubicaciones físicas donde operan los relojes checadores ZKTeco y Hikvision"
       mode="client"
+      realtimeState={realtimeState}
       actions={
         <Button onClick={openNewSheet}>
           <Plus className="size-4" aria-hidden="true" />
@@ -264,6 +275,12 @@ export default function SucursalesPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Buscar por clave o nombre de planta…"
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(colId, dir) => {
+          setSortBy(colId);
+          setSortDir(dir);
+        }}
         isLoading={isLoading}
         exportFilename="sucursales-sm-clock"
         exportColumns={exportColumns}

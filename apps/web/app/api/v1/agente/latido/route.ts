@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { AgentHeartbeatSchema } from '@sm-clock/contracts';
 import { authenticateAgentRequest } from '@/lib/server/agent-auth';
+import {
+  broadcastAdminEvent,
+  broadcastTenantEvent,
+} from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -59,6 +63,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   const driftSeconds = Number.isFinite(agentClockMs)
     ? Math.round(Math.abs(Date.now() - agentClockMs) / 1000)
     : 0;
+
+  // Notificar en tiempo real al tenant y al panel de administración
+  await Promise.all([
+    broadcastTenantEvent(tenantId, 'agentes_changed', { agente_id: agenteId }),
+    broadcastAdminEvent('agentes_changed', { agente_id: agenteId, tenant_id: tenantId }),
+  ]);
 
   return NextResponse.json({
     ok: true,

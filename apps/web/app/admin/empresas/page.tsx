@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/data-table/data-table';
 import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { useToast } from '@/components/ui/toast';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { formatFechaHoraMx } from '@/lib/utils';
 import { EmpresaSheet } from './empresa-sheet';
 
@@ -225,40 +225,10 @@ export default function AdminEmpresasPage() {
     },
   });
 
-  // Suscripción Realtime 100% en vivo (postgres_changes y broadcast)
-  React.useEffect(() => {
-    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
-    try {
-      supabase = createSupabaseBrowserClient();
-    } catch {
-      return;
-    }
-
-    const channel = supabase
-      .channel('admin:tenants:realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tenants' },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
-        },
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'perfiles_usuarios' },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
-        },
-      )
-      .on('broadcast', { event: '*' }, () => {
-        void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
-      })
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
+  const { status: realtimeState } = useAdminChannel({
+    queryKeysToInvalidate: [['admin-tenants']],
+    events: ['*'],
+  });
 
   const columns = React.useMemo<DataTableColumnDef<TenantRow>[]>(
     () => [
@@ -473,6 +443,7 @@ export default function AdminEmpresasPage() {
     <AppShell
       title="Empresas"
       subtitle="Administración de clientes (tenants), datos fiscales de referencia, planes, zonas horarias y Administrador inicial con Google Auth."
+      realtimeState={realtimeState}
       actions={
         <Button
           onClick={() => {

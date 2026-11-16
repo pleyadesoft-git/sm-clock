@@ -6,6 +6,10 @@ import {
 } from '@sm-clock/contracts';
 import { requireSuperAdmin } from '@/lib/server/auth';
 import { generateEnrollmentCode } from '@/lib/server/agent-auth';
+import {
+  broadcastAdminEvent,
+  broadcastTenantEvent,
+} from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 const RevokeAgentSchema = z.object({
@@ -23,6 +27,22 @@ export async function GET(request: Request): Promise<NextResponse> {
   const pageSize = Math.min(100, Math.max(10, Number(searchParams.get('pageSize') ?? '25')));
   const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
+  const ALLOWED_SORT_COLUMNS = [
+    'nombre',
+    'version',
+    'ultimo_latido',
+    'created_at',
+    'revocado_en',
+  ] as const;
+
+  const rawSortBy = searchParams.get('sortBy');
+  const sortBy = ALLOWED_SORT_COLUMNS.includes(
+    rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
+  )
+    ? (rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
+    : 'created_at';
+  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
+
   const admin = createSupabaseAdminClient();
   let query = admin
     .from('agentes')
@@ -30,7 +50,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       'id, tenant_id, nombre, version, ultimo_latido, revocado_en, created_at, tenants(tenant_code, nombre_comercial)',
       { count: 'exact' },
     )
-    .order('created_at', { ascending: false });
+    .order(sortBy, { ascending: sortDir === 'asc' });
 
   if (search) {
     query = query.ilike('nombre', `%${search}%`);
@@ -177,6 +197,18 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       revocado_en: nowIso,
     },
   });
+
+  await Promise.all([
+    broadcastAdminEvent('agentes_changed', {
+      agente_id: revoked.id,
+      tenant_id: revoked.tenant_id,
+      accion: 'REVOCAR',
+    }),
+    broadcastTenantEvent(revoked.tenant_id, 'agentes_changed', {
+      agente_id: revoked.id,
+      accion: 'REVOCAR',
+    }),
+  ]);
 
   return NextResponse.json({ data: revoked });
 }

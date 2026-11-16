@@ -145,10 +145,55 @@ export function DataTable<TData extends RowData>({
     return () => window.clearTimeout(timer);
   }, [localSearch, onSearchChange, search]);
 
+  const [internalSortBy, setInternalSortBy] = React.useState<
+    string | undefined
+  >(sortBy);
+  const [internalSortDir, setInternalSortDir] = React.useState<
+    'asc' | 'desc'
+  >(sortDir);
+
+  const effectiveSortBy = sortBy !== undefined ? sortBy : internalSortBy;
+  const effectiveSortDir = sortBy !== undefined ? sortDir : internalSortDir;
+
+  React.useEffect(() => {
+    if (sortBy !== undefined) {
+      setInternalSortBy(sortBy);
+    }
+  }, [sortBy]);
+
+  React.useEffect(() => {
+    if (sortDir !== undefined) {
+      setInternalSortDir(sortDir);
+    }
+  }, [sortDir]);
+
+  // Si onSortChange no se proporciona, realizar ordenamiento client-side automáticamente
+  const sortedData = React.useMemo(() => {
+    if (onSortChange || !effectiveSortBy) return data;
+    return [...data].sort((a, b) => {
+      const aVal = (a as Record<string, unknown>)[effectiveSortBy];
+      const bVal = (b as Record<string, unknown>)[effectiveSortBy];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return effectiveSortDir === 'asc' ? 1 : -1;
+      if (bVal == null) return effectiveSortDir === 'asc' ? -1 : 1;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return effectiveSortDir === 'asc'
+          ? aVal.localeCompare(bVal, 'es-MX')
+          : bVal.localeCompare(aVal, 'es-MX');
+      }
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return effectiveSortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return effectiveSortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal), 'es-MX')
+        : String(bVal).localeCompare(String(aVal), 'es-MX');
+    });
+  }, [data, onSortChange, effectiveSortBy, effectiveSortDir]);
+
   const table = useTable({
     features: dataTableFeatures,
     columns,
-    data,
+    data: sortedData,
     state: {
       columnVisibility,
     },
@@ -166,10 +211,18 @@ export function DataTable<TData extends RowData>({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const handleSortClick = (columnId: string, headerText: string) => {
-    if (!onSortChange) return;
     const nextDir: 'asc' | 'desc' =
-      sortBy === columnId && sortDir === 'asc' ? 'desc' : 'asc';
-    onSortChange(columnId, nextDir);
+      effectiveSortBy === columnId && effectiveSortDir === 'asc'
+        ? 'desc'
+        : 'asc';
+
+    if (onSortChange) {
+      onSortChange(columnId, nextDir);
+    } else {
+      setInternalSortBy(columnId);
+      setInternalSortDir(nextDir);
+    }
+
     setSortStatusAnnouncement(
       `Ordenado por ${headerText}, ${nextDir === 'asc' ? 'ascendente' : 'descendente'}, ${data.length} filas`,
     );
@@ -406,12 +459,11 @@ export function DataTable<TData extends RowData>({
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
                     const colId = header.column.id;
-                    const canSort =
-                      Boolean(onSortChange) && header.column.getCanSort();
-                    const isSorted = sortBy === colId;
+                    const canSort = header.column.getCanSort();
+                    const isSorted = effectiveSortBy === colId;
                     const ariaSortValue: 'ascending' | 'descending' | undefined =
                       isSorted
-                        ? sortDir === 'asc'
+                        ? effectiveSortDir === 'asc'
                           ? 'ascending'
                           : 'descending'
                         : undefined;

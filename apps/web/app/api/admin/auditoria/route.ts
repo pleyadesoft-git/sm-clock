@@ -17,6 +17,22 @@ export async function GET(request: Request): Promise<NextResponse> {
   );
   const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
+  const ALLOWED_SORT_COLUMNS = [
+    'created_at',
+    'accion',
+    'actor_id',
+    'ip',
+    'tenant_id',
+  ] as const;
+
+  const rawSortBy = searchParams.get('sortBy');
+  const sortBy = ALLOWED_SORT_COLUMNS.includes(
+    rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
+  )
+    ? (rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
+    : 'created_at';
+  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
+
   const admin = createSupabaseAdminClient();
   let query = admin
     .from('auditoria')
@@ -24,7 +40,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       'id, tenant_id, actor_id, accion, detalle, ip, created_at, tenants(tenant_code, nombre_comercial)',
       { count: 'exact' },
     )
-    .order('created_at', { ascending: false });
+    .order(sortBy, { ascending: sortDir === 'asc' });
 
   if (search) {
     query = query.ilike('accion', `%${search}%`);

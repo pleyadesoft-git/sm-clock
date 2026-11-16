@@ -53,6 +53,12 @@ export const SucursalUpdateSchema = SucursalCreateSchema.partial().extend({
 });
 export type SucursalUpdateInput = z.infer<typeof SucursalUpdateSchema>;
 
+export const OptionalUuidSchema = z
+  .union([z.uuid(), z.literal(''), z.null()])
+  .transform((val) => (val && val.length > 0 ? val : null))
+  .nullable()
+  .optional();
+
 export const EmpleadoCreateSchema = z.object({
   codigo_empleado: z
     .string()
@@ -84,7 +90,7 @@ export const EmpleadoCreateSchema = z.object({
     .optional(),
   departamento: OptionalSanitizedString(100, 'El departamento'),
   puesto: OptionalSanitizedString(100, 'El puesto'),
-  sucursal_id: z.uuid().nullable().optional(),
+  sucursal_id: OptionalUuidSchema,
   estatus_empleado: EstatusEmpleadoSchema.default('A'),
 });
 export type EmpleadoCreateInput = z.infer<typeof EmpleadoCreateSchema>;
@@ -97,3 +103,34 @@ export type EmpleadoUpdateInput = z.infer<typeof EmpleadoUpdateSchema>;
 export const EmpleadoFotoParamsSchema = z.object({
   id: z.uuid(),
 });
+
+export const ValidarCodigoEmpleadoSchema = z.object({
+  codigo: z
+    .string()
+    .trim()
+    .min(1, 'El código de empleado es obligatorio')
+    .max(30, 'El código de empleado no puede exceder 30 caracteres')
+    .regex(
+      /^[A-Za-z0-9._-]+$/,
+      'El código de empleado solo puede contener letras, números, punto, guion y guion bajo',
+    ),
+  excludeId: OptionalUuidSchema,
+});
+export type ValidarCodigoEmpleadoInput = z.infer<
+  typeof ValidarCodigoEmpleadoSchema
+>;
+
+export const ValidarCodigoEmpleadoResponseSchema = z.object({
+  disponible: z.boolean(),
+  codigo: z.string(),
+  empleadoExistente: z
+    .object({
+      id: z.string(),
+      nombre: z.string(),
+      estatus: EstatusEmpleadoSchema,
+    })
+    .nullable(),
+});
+export type ValidarCodigoEmpleadoResponse = z.infer<
+  typeof ValidarCodigoEmpleadoResponseSchema
+>;

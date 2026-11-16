@@ -3,6 +3,7 @@ import { SmtpConfigUpsertSchema } from '@sm-clock/contracts';
 import { recordAuditLog, requireTenantAdmin } from '@/lib/server/auth';
 import { encryptCredentialSecret } from '@/lib/server/crypto';
 import { getMasterKeyHex } from '@/lib/server/smtp-mailer';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 export async function GET(): Promise<NextResponse> {
@@ -180,6 +181,11 @@ export async function PUT(request: Request): Promise<NextResponse> {
       seguridad: upserted.seguridad,
       password_actualizado: hasNewPassword,
     },
+  });
+
+  await broadcastTenantEvent(tenantId, 'configuracion_changed', {
+    config: 'smtp',
+    usar_smtp_propio: upserted.usar_smtp_propio,
   });
 
   return NextResponse.json({ data: upserted });

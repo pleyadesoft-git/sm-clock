@@ -8,6 +8,7 @@ import {
   recordAuditLog,
   requireAuthenticatedUser,
 } from '@/lib/server/auth';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 async function resolveTenantIdForUser(auth: {
@@ -58,6 +59,22 @@ export async function GET(request: Request): Promise<NextResponse> {
   );
   const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
 
+  const ALLOWED_SORT_COLUMNS = [
+    'clave',
+    'nombre',
+    'direccion',
+    'activa',
+    'created_at',
+  ] as const;
+
+  const rawSortBy = searchParams.get('sortBy');
+  const sortBy = ALLOWED_SORT_COLUMNS.includes(
+    rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
+  )
+    ? (rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
+    : 'clave';
+  const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc';
+
   const admin = createSupabaseAdminClient();
   let query = admin
     .from('sucursales')
@@ -65,7 +82,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       count: 'exact',
     })
     .eq('tenant_id', tenantId)
-    .order('clave', { ascending: true });
+    .order(sortBy, { ascending: sortDir === 'asc' });
 
   if (search) {
     query = query.or(`clave.ilike.%${search}%,nombre.ilike.%${search}%`);
@@ -153,6 +170,12 @@ export async function POST(request: Request): Promise<NextResponse> {
     detalle: { sucursal_id: created.id, clave: created.clave },
   });
 
+  await broadcastTenantEvent(tenantId, 'sucursales_changed', {
+    sucursal_id: created.id,
+    clave: created.clave,
+    accion: 'CREAR',
+  });
+
   return NextResponse.json({ data: created }, { status: 201 });
 }
 
@@ -218,6 +241,12 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     actorId: auth.user.userId,
     accion: 'ACTUALIZAR_SUCURSAL',
     detalle: { sucursal_id: updated.id, clave: updated.clave },
+  });
+
+  await broadcastTenantEvent(tenantId, 'sucursales_changed', {
+    sucursal_id: updated.id,
+    clave: updated.clave,
+    accion: 'ACTUALIZAR',
   });
 
   return NextResponse.json({ data: updated });

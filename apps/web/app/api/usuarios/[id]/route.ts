@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { UpdateTenantUserRequestSchema } from '@sm-clock/contracts';
 import { recordAuditLog, requireTenantAdmin } from '@/lib/server/auth';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 export async function PATCH(
@@ -83,6 +84,11 @@ export async function PATCH(
     },
   });
 
+  await broadcastTenantEvent(tenantId, 'usuarios_changed', {
+    target_user_id: updated.id,
+    accion: 'ACTUALIZAR',
+  });
+
   return NextResponse.json({ data: updated });
 }
 
@@ -142,6 +148,11 @@ export async function DELETE(
       },
     });
 
+    await broadcastTenantEvent(tenantId, 'usuarios_changed', {
+      target_user_id: deletedUser.id,
+      accion: 'ELIMINAR_USUARIO',
+    });
+
     return NextResponse.json({ data: deletedUser });
   }
 
@@ -163,6 +174,12 @@ export async function DELETE(
         email: deletedInvite.email,
       },
     });
+
+    await broadcastTenantEvent(tenantId, 'usuarios_changed', {
+      invitacion_id: deletedInvite.id,
+      accion: 'ELIMINAR_INVITACION',
+    });
+
     return NextResponse.json({ data: deletedInvite });
   }
 

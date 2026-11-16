@@ -16,6 +16,8 @@ const QueryParamsSchema = z.object({
   filtroMarca: z
     .enum(['TODAS', 'ENTRADA', 'SALIDA', 'AMBIGUAS'])
     .default('TODAS'),
+  sortBy: z.string().optional().default('ts_utc'),
+  sortDir: z.enum(['asc', 'desc']).optional().default('desc'),
 });
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -30,6 +32,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     pageSize: searchParams.get('pageSize') ?? '25',
     search: searchParams.get('search') ?? '',
     filtroMarca: searchParams.get('filtroMarca') ?? 'TODAS',
+    sortBy: searchParams.get('sortBy') ?? 'ts_utc',
+    sortDir: searchParams.get('sortDir') ?? 'desc',
   });
 
   if (!parsedParams.success) {
@@ -39,7 +43,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 
-  const { page, pageSize, search, filtroMarca } = parsedParams.data;
+  const { page, pageSize, search, filtroMarca, sortBy, sortDir } =
+    parsedParams.data;
   const admin = createSupabaseAdminClient();
 
   // Regla Dura #2: tenant_id sale exclusivamente del JWT (o primer tenant activo para SUPER_ADMIN en vista soporte)
@@ -106,7 +111,24 @@ export async function GET(request: Request): Promise<NextResponse> {
       { count: 'exact' },
     )
     .eq('tenant_id', tenantId)
-    .order('ts_utc', { ascending: false });
+  const ALLOWED_SORT_COLUMNS = [
+    'ts_utc',
+    'codigo_empleado',
+    'tipo_marca',
+    'tipo_verificacion',
+    'ts_dispositivo_local',
+    'created_at',
+  ] as const;
+
+  const validSortBy = ALLOWED_SORT_COLUMNS.includes(
+    sortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
+  )
+    ? (sortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
+    : 'ts_utc';
+
+  checadasQuery = checadasQuery.order(validSortBy, {
+    ascending: sortDir === 'asc',
+  });
 
   if (search) {
     const safeSearch = search.replace(/[%_]/g, '');

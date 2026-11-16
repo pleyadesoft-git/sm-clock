@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { TenantUpdateSchema, type Database } from '@sm-clock/contracts';
 import { AuthError, recordAuditLog, requireRoles } from '@/lib/server/auth';
+import {
+  broadcastAdminEvent,
+  broadcastTenantEvent,
+} from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 const IdParamSchema = z.object({
@@ -98,17 +102,17 @@ export async function PATCH(
     });
 
     // Broadcast para clientes conectados en tiempo real
-    try {
-      const realtimeChannel = supabase.channel('admin:tenants:realtime');
-      await realtimeChannel.send({
-        type: 'broadcast',
-        event: 'tenant_updated',
-        payload: { tenant_id: updated.id, tenant_code: updated.tenant_code },
-      });
-      await supabase.removeChannel(realtimeChannel);
-    } catch {
-      // Continuar si broadcast no está disponible
-    }
+    await Promise.all([
+      broadcastAdminEvent('tenants_changed', {
+        tenant_id: updated.id,
+        tenant_code: updated.tenant_code,
+        accion: 'ACTUALIZAR',
+      }),
+      broadcastTenantEvent(updated.id, 'tenants_changed', {
+        tenant_id: updated.id,
+        accion: 'ACTUALIZAR',
+      }),
+    ]);
 
     return NextResponse.json(updated);
   } catch (err) {
@@ -162,6 +166,18 @@ export async function DELETE(
       detalle: { tenant_code: cancelled.tenant_code },
       ip: request.headers.get('x-forwarded-for'),
     });
+
+    await Promise.all([
+      broadcastAdminEvent('tenants_changed', {
+        tenant_id: cancelled.id,
+        tenant_code: cancelled.tenant_code,
+        accion: 'CANCELAR',
+      }),
+      broadcastTenantEvent(cancelled.id, 'tenants_changed', {
+        tenant_id: cancelled.id,
+        accion: 'CANCELAR',
+      }),
+    ]);
 
     return NextResponse.json(cancelled);
   } catch (err) {

@@ -5,6 +5,7 @@ import {
   recordAuditLog,
   requireSuperAdmin,
 } from '@/lib/server/auth';
+import { broadcastAdminEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 export async function PATCH(
@@ -105,6 +106,11 @@ export async function PATCH(
       email: updated.email,
       activo: updated.activo,
     },
+  });
+
+  await broadcastAdminEvent('super_admins_changed', {
+    user_id: updated.id,
+    accion: 'ACTUALIZAR',
   });
 
   return NextResponse.json({

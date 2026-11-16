@@ -107,5 +107,39 @@ describe('<DataTable /> standard component', () => {
     expect(searchInput).toBeDefined();
     expect(searchInput.classList.contains('has-search-icon')).toBe(true);
   });
+
+  it('sorts data client-side when onSortChange is not provided and a header is clicked', () => {
+    render(
+      <DataTable
+        caption="Empresas con orden automático"
+        columns={columns}
+        data={[
+          { id: '1', nombre: 'Beta Corp', rfc: 'BBB010101' },
+          { id: '2', nombre: 'Alpha Inc', rfc: 'AAA010101' },
+        ]}
+        total={2}
+        page={1}
+        pageSize={20}
+        onPageChange={vi.fn()}
+        onPageSizeChange={vi.fn()}
+        exportColumns={[]}
+        exportFilename="test"
+      />,
+    );
+
+    const sortBtn = screen.getByRole('button', { name: 'Empresa' });
+    expect(sortBtn).toBeDefined();
+
+    // Click header to sort by Empresa asc
+    fireEvent.click(sortBtn);
+    let rows = screen.getAllByRole('row');
+    // First data row (index 1) should be Alpha Inc
+    expect(rows[1]?.textContent).toContain('Alpha Inc');
+
+    // Click again to sort desc
+    fireEvent.click(sortBtn);
+    rows = screen.getAllByRole('row');
+    expect(rows[1]?.textContent).toContain('Beta Corp');
+  });
 });
 

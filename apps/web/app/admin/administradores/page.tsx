@@ -13,6 +13,7 @@ import {
   CreateSuperAdminRequestSchema,
   type SuperAdminRow,
 } from '@sm-clock/contracts';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,8 @@ export default function AdminSuperAdminsPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('created_at');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
   const [estatusFilter, setEstatusFilter] = React.useState<
     'TODOS' | 'ACTIVO' | 'INACTIVO'
   >('TODOS');
@@ -63,6 +66,11 @@ export default function AdminSuperAdminsPage() {
       }
       return (await res.json()) as SuperAdminsResponse;
     },
+  });
+
+  const { status: realtimeState } = useAdminChannel({
+    queryKeysToInvalidate: [['admin-super-admins']],
+    events: ['*'],
   });
 
   const createMutation = useMutation({
@@ -285,16 +293,55 @@ export default function AdminSuperAdminsPage() {
   );
 
   const allRows = data?.data ?? [];
+  const sortedRows = React.useMemo(() => {
+    if (!sortBy) return allRows;
+    return [...allRows].sort((a, b) => {
+      let aVal: unknown;
+      let bVal: unknown;
+      if (sortBy === 'nombre_completo') {
+        aVal = a.nombre_completo;
+        bVal = b.nombre_completo;
+      } else if (sortBy === 'email') {
+        aVal = a.email;
+        bVal = b.email;
+      } else if (sortBy === 'activo') {
+        aVal = a.activo ? 1 : 0;
+        bVal = b.activo ? 1 : 0;
+      } else if (sortBy === 'ultimo_acceso_en') {
+        aVal = a.ultimo_acceso_en ?? '';
+        bVal = b.ultimo_acceso_en ?? '';
+      } else {
+        aVal = (a as unknown as Record<string, unknown>)[sortBy];
+        bVal = (b as unknown as Record<string, unknown>)[sortBy];
+      }
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return sortDir === 'asc' ? 1 : -1;
+      if (bVal == null) return sortDir === 'asc' ? -1 : 1;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDir === 'asc'
+          ? aVal.localeCompare(bVal, 'es-MX')
+          : bVal.localeCompare(aVal, 'es-MX');
+      }
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal), 'es-MX')
+        : String(bVal).localeCompare(String(aVal), 'es-MX');
+    });
+  }, [allRows, sortBy, sortDir]);
+
   const pagedRows = React.useMemo(() => {
     const start = (page - 1) * pageSize;
-    return allRows.slice(start, start + pageSize);
-  }, [allRows, page, pageSize]);
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageSize]);
 
   return (
     <AppShell
       mode="admin"
       title="Super-Administradores del SaaS"
       subtitle="Control de cuentas dueñas de la plataforma con acceso global a /admin/* (Google Auth + MFA obligatorio)"
+      realtimeState={realtimeState}
       actions={
         <Button
           onClick={() => {
@@ -371,6 +418,12 @@ export default function AdminSuperAdminsPage() {
             setPage(1);
           }}
           searchPlaceholder="Buscar Super-Admin por nombre o correo…"
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(colId, dir) => {
+            setSortBy(colId);
+            setSortDir(dir);
+          }}
           isLoading={isLoading}
           exportFilename="super-admins-sm-clock"
           exportColumns={exportColumns}

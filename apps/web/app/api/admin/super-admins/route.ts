@@ -10,6 +10,7 @@ import {
   recordAuditLog,
   requireSuperAdmin,
 } from '@/lib/server/auth';
+import { broadcastAdminEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -223,6 +224,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     created_at: insertedProfile.created_at,
     es_bootstrap: isBootstrapSuperAdminEmail(insertedProfile.email),
   };
+
+  await broadcastAdminEvent('super_admins_changed', {
+    user_id: insertedProfile.id,
+    accion: 'CREAR',
+  });
 
   return NextResponse.json({ data: responseRow }, { status: 201 });
 }

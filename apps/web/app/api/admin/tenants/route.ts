@@ -8,6 +8,7 @@ import {
   type PaginatedResult,
 } from '@sm-clock/contracts';
 import { AuthError, recordAuditLog, requireRoles } from '@/lib/server/auth';
+import { broadcastAdminEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 type TenantRow = Database['public']['Tables']['tenants']['Row'];
@@ -317,17 +318,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Broadcast para clientes conectados en tiempo real
-    try {
-      const realtimeChannel = supabase.channel('admin:tenants:realtime');
-      await realtimeChannel.send({
-        type: 'broadcast',
-        event: 'tenant_created',
-        payload: { tenant_id: created.id, tenant_code: created.tenant_code },
-      });
-      await supabase.removeChannel(realtimeChannel);
-    } catch {
-      // Continuar incluso si broadcast falla
-    }
+    await broadcastAdminEvent('tenants_changed', {
+      tenant_id: created.id,
+      tenant_code: created.tenant_code,
+      accion: 'CREAR',
+    });
 
     const responsePayload: TenantWithInitialAdmin = {
       ...created,

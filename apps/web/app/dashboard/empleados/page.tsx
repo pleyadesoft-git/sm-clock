@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -37,14 +38,18 @@ export default function DashboardEmpleadosPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('codigo_empleado');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
 
   const { data, isLoading, error } = useQuery<EmpleadosResponse>({
-    queryKey: ['dashboard-empleados', page, pageSize, search],
+    queryKey: ['dashboard-empleados', page, pageSize, search, sortBy, sortDir],
     queryFn: async () => {
       const sp = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
+        sortBy,
+        sortDir,
       });
       const res = await fetch(`/api/empleados?${sp.toString()}`);
       if (!res.ok) {
@@ -52,6 +57,11 @@ export default function DashboardEmpleadosPage() {
       }
       return (await res.json()) as EmpleadosResponse;
     },
+  });
+
+  const { status: realtimeState } = useTenantChannel({
+    queryKeysToInvalidate: [['dashboard-empleados']],
+    events: ['*'],
   });
 
   const columns = React.useMemo<DataTableColumnDef<EmpleadoRow>[]>(
@@ -171,6 +181,7 @@ export default function DashboardEmpleadosPage() {
       title="Padrón de Empleados"
       subtitle="Empleados activos sincronizados con relojes checadores y sistemas de nómina."
       mode="client"
+      realtimeState={realtimeState}
     >
       <DataTable
         caption="Padrón de empleados registrados en la empresa"
@@ -187,6 +198,12 @@ export default function DashboardEmpleadosPage() {
           setPage(1);
         }}
         searchPlaceholder="Buscar por nombre, número de empleado o departamento…"
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(colId, dir) => {
+          setSortBy(colId);
+          setSortDir(dir);
+        }}
         isLoading={isLoading}
         errorMessage={error instanceof Error ? error.message : null}
         exportFilename="empleados-sm-clock"

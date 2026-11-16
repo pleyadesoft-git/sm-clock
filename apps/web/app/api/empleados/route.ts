@@ -8,6 +8,7 @@ import {
   recordAuditLog,
   requireAuthenticatedUser,
 } from '@/lib/server/auth';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 const BUCKET_NAME = 'empleados-fotos';
@@ -31,6 +32,9 @@ async function resolveTenantIdForUser(auth: {
   }
   return null;
 }
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuthenticatedUser();
@@ -63,6 +67,24 @@ export async function GET(request: Request): Promise<NextResponse> {
   const estatus = searchParams.get('estatus') ?? '';
   const sucursalId = searchParams.get('sucursal_id') ?? '';
 
+  const ALLOWED_SORT_COLUMNS = [
+    'codigo_empleado',
+    'nombre_completo',
+    'credencial',
+    'departamento',
+    'puesto',
+    'estatus_empleado',
+    'created_at',
+  ] as const;
+
+  const rawSortBy = searchParams.get('sortBy');
+  const sortBy = ALLOWED_SORT_COLUMNS.includes(
+    rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
+  )
+    ? (rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
+    : 'codigo_empleado';
+  const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc';
+
   const admin = createSupabaseAdminClient();
 
   let query = admin
@@ -72,7 +94,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       { count: 'exact' },
     )
     .eq('tenant_id', tenantId)
-    .order('codigo_empleado', { ascending: true });
+    .order(sortBy, { ascending: sortDir === 'asc' });
 
   if (search) {
     query = query.or(
@@ -113,8 +135,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       .createSignedUrls(pathsToSign, SIGNED_URL_TTL_SECONDS);
 
     for (const item of signedList ?? []) {
-      if (item.path && item.signedUrl) {
-        signedMap.set(item.path, item.signedUrl);
+      const url =
+        item.signedUrl ??
+        (item as unknown as { signedURL?: string | null }).signedURL;
+      if (item.path && url) {
+        signedMap.set(item.path, url);
       }
     }
   }
@@ -135,13 +160,20 @@ export async function GET(request: Request): Promise<NextResponse> {
     .eq('tenant_id', tenantId)
     .order('clave', { ascending: true });
 
-  return NextResponse.json({
-    data: enriched,
-    total: count ?? 0,
-    page,
-    pageSize,
-    sucursales: sucursales ?? [],
-  });
+  return NextResponse.json(
+    {
+      data: enriched,
+      total: count ?? 0,
+      page,
+      pageSize,
+      sucursales: sucursales ?? [],
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      },
+    },
+  );
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -181,6 +213,23 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const admin = createSupabaseAdminClient();
+
+  const { data: duplicate } = await admin
+    .from('empleados')
+    .select('id, nombre_completo')
+    .eq('tenant_id', tenantId)
+    .eq('codigo_empleado', parsed.data.codigo_empleado)
+    .maybeSingle();
+
+  if (duplicate) {
+    return NextResponse.json(
+      {
+        error: `El código de empleado "${parsed.data.codigo_empleado}" ya está registrado por ${duplicate.nombre_completo}. Elige un código disponible.`,
+      },
+      { status: 409 },
+    );
+  }
+
   const { data: created, error } = await admin
     .from('empleados')
     .insert({
@@ -211,6 +260,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       empleado_id: created.id,
       codigo_empleado: created.codigo_empleado,
     },
+  });
+
+  await broadcastTenantEvent(tenantId, 'empleados_changed', {
+    empleado_id: created.id,
+    codigo_empleado: created.codigo_empleado,
+    accion: 'CREAR',
   });
 
   return NextResponse.json({ data: created }, { status: 201 });
@@ -287,6 +342,25 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     updateData.estatus_empleado = parsed.data.estatus_empleado;
   }
 
+  if (parsed.data.codigo_empleado !== undefined) {
+    const { data: duplicate } = await admin
+      .from('empleados')
+      .select('id, nombre_completo')
+      .eq('tenant_id', tenantId)
+      .eq('codigo_empleado', parsed.data.codigo_empleado)
+      .neq('id', parsed.data.id)
+      .maybeSingle();
+
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: `El código de empleado "${parsed.data.codigo_empleado}" ya está registrado por ${duplicate.nombre_completo}. Elige un código disponible.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data: updated, error } = await admin
     .from('empleados')
     .update(updateData)
@@ -310,6 +384,12 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       empleado_id: updated.id,
       codigo_empleado: updated.codigo_empleado,
     },
+  });
+
+  await broadcastTenantEvent(tenantId, 'empleados_changed', {
+    empleado_id: updated.id,
+    codigo_empleado: updated.codigo_empleado,
+    accion: 'ACTUALIZAR',
   });
 
   return NextResponse.json({ data: updated });

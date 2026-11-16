@@ -2,10 +2,16 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, KeyRound, Plus, ShieldOff } from 'lucide-react';
+import { Copy, Download, KeyRound, Plus, ShieldOff } from 'lucide-react';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+
+const AGENT_DOWNLOAD_ZIP_URL =
+  'https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent-windows-x64.zip';
+const AGENT_DOWNLOAD_EXE_URL =
+  'https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent.exe';
 import {
   DataTable,
   type DataTableColumnDef,
@@ -67,6 +73,8 @@ export default function AdminAgentesPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('created_at');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
   const [sheetOpen, setSheetOpen] = React.useState(false);
 
   const [selectedTenantId, setSelectedTenantId] = React.useState('');
@@ -78,12 +86,14 @@ export default function AdminAgentesPage() {
   const [submitting, setSubmitting] = React.useState(false);
 
   const { data, isLoading } = useQuery<AgentesResponse>({
-    queryKey: ['admin-agentes', page, pageSize, search],
+    queryKey: ['admin-agentes', page, pageSize, search, sortBy, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
+        sortBy,
+        sortDir,
       });
       const res = await fetch(`/api/admin/agentes?${params.toString()}`);
       if (!res.ok) {
@@ -91,6 +101,11 @@ export default function AdminAgentesPage() {
       }
       return (await res.json()) as AgentesResponse;
     },
+  });
+
+  const { status: realtimeState } = useAdminChannel({
+    queryKeysToInvalidate: [['admin-agentes']],
+    events: ['*'],
   });
 
   const tenants = data?.tenants ?? [];
@@ -280,17 +295,30 @@ export default function AdminAgentesPage() {
       title="Agentes Locales Python (ZKTeco / Hikvision)"
       subtitle="Enrolamiento seguro de un solo uso, monitoreo de latidos cada 60s y revocación remota"
       mode="admin"
+      realtimeState={realtimeState}
       actions={
-        <Button
-          onClick={() => {
-            setGeneratedCode(null);
-            setGeneratedExpiry(null);
-            setSheetOpen(true);
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          Generar código de enrolamiento
-        </Button>
+        <div className="flex flex-wrap items-center gap-[var(--s-2)]">
+          <a
+            href={AGENT_DOWNLOAD_ZIP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-2)] text-sm"
+          >
+            <Download className="h-4 w-4" />
+            <span>Descargar Agente Windows (.zip)</span>
+          </a>
+          <Button
+            onClick={() => {
+              setGeneratedCode(null);
+              setGeneratedExpiry(null);
+              setSheetOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4" />
+            Generar código de enrolamiento
+          </Button>
+        </div>
       }
     >
       <DataTable
@@ -305,6 +333,12 @@ export default function AdminAgentesPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Buscar por hostname o nombre del agente…"
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(colId, dir) => {
+          setSortBy(colId);
+          setSortDir(dir);
+        }}
         isLoading={isLoading}
         exportFilename="agentes-locales-sm-clock"
         exportColumns={exportColumns}
@@ -375,6 +409,31 @@ export default function AdminAgentesPage() {
               <option value="60">1 hora</option>
               <option value="240">4 horas</option>
             </select>
+          </div>
+
+          <div className="rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--bg-elevated)] p-[var(--s-3)] text-xs text-[var(--text-2)] flex flex-col gap-[var(--s-2)]">
+            <span className="font-semibold text-[var(--text)]">Descargar Agente para Windows</span>
+            <p>Descargue el paquete del agente para ejecutarlo en la PC local del cliente donde están los relojes:</p>
+            <div className="flex flex-wrap items-center gap-[var(--s-2)]">
+              <a
+                href={AGENT_DOWNLOAD_ZIP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-1)] px-[var(--s-2)] py-[var(--s-1)] text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Paquete .ZIP (Recomendado)</span>
+              </a>
+              <a
+                href={AGENT_DOWNLOAD_EXE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-1)] px-[var(--s-2)] py-[var(--s-1)] text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Ejecutable directo (.exe)</span>
+              </a>
+            </div>
           </div>
 
           {generatedCode && (

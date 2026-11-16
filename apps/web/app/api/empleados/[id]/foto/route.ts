@@ -7,6 +7,7 @@ import {
   requireAuthenticatedUser,
 } from '@/lib/server/auth';
 import { validateAndProcessEmployeePhoto } from '@/lib/server/photo-validator';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 const BUCKET_NAME = 'empleados-fotos';
@@ -105,33 +106,71 @@ export async function POST(
   const newMainPath = `${tenantId}/${empleadoId}/${fileUuid}.webp`;
   const newThumbPath = `${tenantId}/${empleadoId}/${fileUuid}_thumb.webp`;
 
-  const { error: uploadMainErr } = await admin.storage
+  async function ensureBucketExists(): Promise<void> {
+    try {
+      const { data: bucket, error } = await admin.storage.getBucket(BUCKET_NAME);
+      if (!bucket || error) {
+        await admin.storage.createBucket(BUCKET_NAME, {
+          public: false,
+          fileSizeLimit: 2 * 1024 * 1024,
+          allowedMimeTypes: ['image/webp', 'image/jpeg', 'image/png'],
+        });
+      }
+    } catch (err) {
+      console.warn('[Storage Bucket Ensure Warning]:', err);
+    }
+  }
+
+  let { error: uploadMainErr } = await admin.storage
     .from(BUCKET_NAME)
     .upload(newMainPath, validation.data.mainBuffer, {
       contentType: 'image/webp',
-      upsert: false,
+      upsert: true,
     });
 
   if (uploadMainErr) {
-    return NextResponse.json(
-      { error: 'Error al almacenar la fotografía en el bucket privado' },
-      { status: 500 },
-    );
+    console.error('[Foto Upload Main Error]:', uploadMainErr);
+    await ensureBucketExists();
+    const retryMain = await admin.storage
+      .from(BUCKET_NAME)
+      .upload(newMainPath, validation.data.mainBuffer, {
+        contentType: 'image/webp',
+        upsert: true,
+      });
+    uploadMainErr = retryMain.error;
+    if (uploadMainErr) {
+      console.error('[Foto Upload Retry Error]:', uploadMainErr);
+      return NextResponse.json(
+        { error: uploadMainErr.message || 'Error al almacenar la fotografía en el bucket privado' },
+        { status: 500 },
+      );
+    }
   }
 
-  const { error: uploadThumbErr } = await admin.storage
+  let { error: uploadThumbErr } = await admin.storage
     .from(BUCKET_NAME)
     .upload(newThumbPath, validation.data.thumbBuffer, {
       contentType: 'image/webp',
-      upsert: false,
+      upsert: true,
     });
 
   if (uploadThumbErr) {
-    await admin.storage.from(BUCKET_NAME).remove([newMainPath]);
-    return NextResponse.json(
-      { error: 'Error al almacenar la miniatura de la fotografía' },
-      { status: 500 },
-    );
+    console.error('[Foto Upload Thumb Error]:', uploadThumbErr);
+    const retryThumb = await admin.storage
+      .from(BUCKET_NAME)
+      .upload(newThumbPath, validation.data.thumbBuffer, {
+        contentType: 'image/webp',
+        upsert: true,
+      });
+    uploadThumbErr = retryThumb.error;
+    if (uploadThumbErr) {
+      console.error('[Foto Upload Thumb Retry Error]:', uploadThumbErr);
+      await admin.storage.from(BUCKET_NAME).remove([newMainPath]);
+      return NextResponse.json(
+        { error: uploadThumbErr.message || 'Error al almacenar la miniatura de la fotografía' },
+        { status: 500 },
+      );
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -174,6 +213,14 @@ export async function POST(
       width: validation.data.width,
       height: validation.data.height,
     },
+  });
+
+  // Notificar en tiempo real al tenant
+  await broadcastTenantEvent(tenantId, 'empleados_changed', {
+    empleado_id: empleadoId,
+    foto_path: newMainPath,
+    foto_thumb_path: newThumbPath,
+    accion: 'FOTO_ACTUALIZADA',
   });
 
   const { data: signedMain } = await admin.storage

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -36,14 +37,18 @@ export default function AdminAuditoriaPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('created_at');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
 
   const { data, isLoading, error } = useQuery<AuditoriaResponse>({
-    queryKey: ['admin-auditoria', page, pageSize, search],
+    queryKey: ['admin-auditoria', page, pageSize, search, sortBy, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
+        sortBy,
+        sortDir,
       });
       const res = await fetch(`/api/admin/auditoria?${params.toString()}`);
       if (!res.ok) {
@@ -51,6 +56,11 @@ export default function AdminAuditoriaPage() {
       }
       return (await res.json()) as AuditoriaResponse;
     },
+  });
+
+  const { status: realtimeState } = useAdminChannel({
+    queryKeysToInvalidate: [['admin-auditoria']],
+    events: ['*'],
   });
 
   const columns = React.useMemo<DataTableColumnDef<AuditRow>[]>(
@@ -143,6 +153,7 @@ export default function AdminAuditoriaPage() {
       title="Bitácora Inmutable de Auditoría"
       subtitle="Registro protegido por trigger contra edición o borrado de acciones administrativas y de agentes."
       mode="admin"
+      realtimeState={realtimeState}
     >
       <DataTable
         caption="Eventos registrados en la bitácora inmutable de auditoría"
@@ -159,6 +170,12 @@ export default function AdminAuditoriaPage() {
           setPage(1);
         }}
         searchPlaceholder="Filtrar por código de acción (ej. TENANT_CREATE)…"
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(colId, dir) => {
+          setSortBy(colId);
+          setSortDir(dir);
+        }}
         isLoading={isLoading}
         errorMessage={error instanceof Error ? error.message : null}
         exportFilename="auditoria-sm-clock"

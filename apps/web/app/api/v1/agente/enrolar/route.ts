@@ -5,6 +5,10 @@ import {
   generateAgentToken,
   sha256Hex,
 } from '@/lib/server/agent-auth';
+import {
+  broadcastAdminEvent,
+  broadcastTenantEvent,
+} from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -117,6 +121,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       hostname: parsed.data.hostname ?? null,
     },
   });
+
+  await Promise.all([
+    broadcastAdminEvent('agentes_changed', {
+      agente_id: newAgent.id,
+      tenant_id: newAgent.tenant_id,
+      accion: 'ENROLAR',
+    }),
+    broadcastTenantEvent(newAgent.tenant_id, 'agentes_changed', {
+      agente_id: newAgent.id,
+      accion: 'ENROLAR',
+    }),
+  ]);
 
   return NextResponse.json(
     {

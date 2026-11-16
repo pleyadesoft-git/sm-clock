@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { AcceptInvitationPasswordRequestSchema } from '@sm-clock/contracts';
 import { checkRateLimit } from '@/lib/server/agent-auth';
 import { recordAuditLog } from '@/lib/server/auth';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -163,6 +164,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       email: normalizedEmail,
       rol: invite.rol,
     },
+  });
+
+  await broadcastTenantEvent(invite.tenant_id, 'usuarios_changed', {
+    accion: 'INVITACION_ACEPTADA',
+    user_id: userId,
+    email: normalizedEmail,
   });
 
   return NextResponse.json({

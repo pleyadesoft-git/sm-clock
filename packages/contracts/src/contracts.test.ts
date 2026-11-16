@@ -17,7 +17,12 @@ import {
   UpdateOwnProfileRequestSchema,
   WebAuthnFactorEnrollSchema,
 } from './auth';
-import { EmpleadoCreateSchema, SucursalCreateSchema } from './empleado';
+import {
+  EmpleadoCreateSchema,
+  SucursalCreateSchema,
+  ValidarCodigoEmpleadoResponseSchema,
+  ValidarCodigoEmpleadoSchema,
+} from './empleado';
 import {
   containsCodeInjectionPattern,
   isSafeSmtpHost,
@@ -495,6 +500,71 @@ describe('@sm-clock/contracts — Input Sanitization & Code Injection Defense', 
         },
       }).success,
     ).toBe(false);
+  });
+
+  it('allows employee creation without photo and with empty or null sucursal_id', () => {
+    const validWithEmptySucursal = EmpleadoCreateSchema.safeParse({
+      codigo_empleado: '1001',
+      nombre_completo: 'Carlos Eduardo Ramírez',
+      credencial: '',
+      departamento: '',
+      puesto: '',
+      sucursal_id: '',
+      estatus_empleado: 'A',
+    });
+    expect(validWithEmptySucursal.success).toBe(true);
+    if (validWithEmptySucursal.success) {
+      expect(validWithEmptySucursal.data.sucursal_id).toBeNull();
+      expect(validWithEmptySucursal.data.credencial).toBeNull();
+      expect(validWithEmptySucursal.data.departamento).toBeNull();
+      expect(validWithEmptySucursal.data.puesto).toBeNull();
+    }
+
+    const validWithNullSucursal = EmpleadoCreateSchema.safeParse({
+      codigo_empleado: '1002',
+      nombre_completo: 'Ana Luisa Méndez',
+      sucursal_id: null,
+    });
+    expect(validWithNullSucursal.success).toBe(true);
+    if (validWithNullSucursal.success) {
+      expect(validWithNullSucursal.data.sucursal_id).toBeNull();
+    }
+  });
+
+  it('validates employee code query parameters and response schema', () => {
+    const validQuery = ValidarCodigoEmpleadoSchema.safeParse({
+      codigo: 'EMP-1001',
+      excludeId: '550e8400-e29b-41d4-a716-446655440000',
+    });
+    expect(validQuery.success).toBe(true);
+
+    const invalidQuerySpaces = ValidarCodigoEmpleadoSchema.safeParse({
+      codigo: 'EMP 1001',
+    });
+    expect(invalidQuerySpaces.success).toBe(false);
+
+    const emptyQuery = ValidarCodigoEmpleadoSchema.safeParse({
+      codigo: '',
+    });
+    expect(emptyQuery.success).toBe(false);
+
+    const validAvailableResp = ValidarCodigoEmpleadoResponseSchema.safeParse({
+      disponible: true,
+      codigo: 'EMP-1001',
+      empleadoExistente: null,
+    });
+    expect(validAvailableResp.success).toBe(true);
+
+    const validOccupiedResp = ValidarCodigoEmpleadoResponseSchema.safeParse({
+      disponible: false,
+      codigo: 'EMP-1001',
+      empleadoExistente: {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        nombre: 'Carlos Santana',
+        estatus: 'A',
+      },
+    });
+    expect(validOccupiedResp.success).toBe(true);
   });
 });
 

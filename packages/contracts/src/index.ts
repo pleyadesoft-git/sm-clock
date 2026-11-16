@@ -1,3 +1,8 @@
+import { z } from 'zod';
+
+// Configurar Zod en modo jitless para entornos con Content-Security-Policy estricto (sin 'unsafe-eval')
+z.config({ jitless: true });
+
 export * from './sanitize';
 export * from './auth';
 export * from './tenant';

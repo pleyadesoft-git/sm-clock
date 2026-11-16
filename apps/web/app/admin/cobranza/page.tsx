@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import type { Database, PaginatedResult, TenantStatus } from '@sm-clock/contracts';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import {
@@ -38,21 +39,42 @@ export default function AdminCobranzaPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('created_at');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
 
   const { data, isLoading, error } = useQuery<PaginatedResult<TenantRow>>({
-    queryKey: ['admin-cobranza', page, pageSize, search],
+    queryKey: ['admin-cobranza', page, pageSize, search, sortBy, sortDir],
     queryFn: async () => {
       const sp = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
       });
       if (search.trim()) sp.set('search', search.trim());
+      const apiSortBy = sortBy === 'cuota_mensual' ? 'plan_codigo' : sortBy;
+      const validDbSortColumns = [
+        'nombre_comercial',
+        'tenant_code',
+        'rfc',
+        'plan_codigo',
+        'estatus',
+        'zona_horaria',
+        'created_at',
+      ];
+      if (validDbSortColumns.includes(apiSortBy)) {
+        sp.set('sortBy', apiSortBy);
+        sp.set('sortDir', sortDir);
+      }
       const res = await fetch(`/api/admin/tenants?${sp.toString()}`);
       if (!res.ok) {
         throw new Error('Error al cargar cuentas de cobranza');
       }
       return (await res.json()) as PaginatedResult<TenantRow>;
     },
+  });
+
+  const { status: realtimeState } = useAdminChannel({
+    queryKeysToInvalidate: [['admin-cobranza']],
+    events: ['*'],
   });
 
   const rows = data?.data ?? [];
@@ -167,6 +189,7 @@ export default function AdminCobranzaPage() {
       title="Planes y Cobranza"
       subtitle="Control administrativo de suscripciones, estados de cuenta y datos fiscales de referencia (sin timbrado CFDI)."
       mode="admin"
+      realtimeState={realtimeState}
     >
       <div className="flex flex-col gap-[var(--s-6)]">
         <div className="grid grid-cols-1 gap-[var(--s-4)] sm:grid-cols-2 lg:grid-cols-4">
@@ -219,6 +242,12 @@ export default function AdminCobranzaPage() {
             setPage(1);
           }}
           searchPlaceholder="Buscar por cliente, razón social o RFC…"
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(colId, dir) => {
+            setSortBy(colId);
+            setSortDir(dir);
+          }}
           isLoading={isLoading}
           errorMessage={error instanceof Error ? error.message : null}
           exportFilename="cobranza-planes-sm-clock"

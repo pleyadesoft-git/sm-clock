@@ -3,7 +3,10 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  AlertCircle,
   Camera,
+  CheckCircle2,
+  Loader2,
   Pencil,
   Plus,
   UserCheck,
@@ -24,6 +27,7 @@ import {
 import {
   EmpleadoCreateSchema,
   EmpleadoUpdateSchema,
+  type ValidarCodigoEmpleadoResponse,
 } from '@sm-clock/contracts';
 import type { z } from 'zod';
 
@@ -33,6 +37,8 @@ import {
   PhotoUploader,
   type StagedPhotoPayload,
 } from '@/components/features/empleados/photo-uploader';
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
+import { useCurrentUser } from '@/lib/auth/use-current-user';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -99,6 +105,8 @@ export default function EmpleadosPage() {
   const [sucursalFilter, setSucursalFilter] = React.useState<
     string | undefined
   >();
+  const [sortBy, setSortBy] = React.useState('codigo_empleado');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
 
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<EmpleadoRow | null>(null);
@@ -118,6 +126,120 @@ export default function EmpleadosPage() {
     mode: 'onTouched',
   });
 
+  type CodeCheckState =
+    | { status: 'idle' }
+    | { status: 'checking'; codigo: string }
+    | { status: 'available'; codigo: string }
+    | {
+        status: 'unavailable';
+        codigo: string;
+        empleadoExistente?: {
+          id: string;
+          nombre: string;
+          estatus: 'A' | 'I';
+        } | null;
+      }
+    | { status: 'error'; codigo: string; message: string };
+
+  const [codeCheckState, setCodeCheckState] = React.useState<CodeCheckState>({
+    status: 'idle',
+  });
+
+  const codigoValue = form.watch('codigo_empleado');
+
+  React.useEffect(() => {
+    if (!sheetOpen) {
+      setCodeCheckState({ status: 'idle' });
+      return;
+    }
+
+    const trimmed = (codigoValue ?? '').trim();
+
+    if (editing && trimmed === editing.codigo_empleado.trim()) {
+      setCodeCheckState({ status: 'available', codigo: trimmed });
+      if (form.formState.errors.codigo_empleado?.type === 'manual') {
+        form.clearErrors('codigo_empleado');
+      }
+      return;
+    }
+
+    if (!trimmed) {
+      setCodeCheckState({ status: 'idle' });
+      if (form.formState.errors.codigo_empleado?.type === 'manual') {
+        form.clearErrors('codigo_empleado');
+      }
+      return;
+    }
+
+    const isValidFormat = /^[A-Za-z0-9._-]+$/.test(trimmed);
+    if (!isValidFormat) {
+      setCodeCheckState({ status: 'idle' });
+      return;
+    }
+
+    setCodeCheckState({ status: 'checking', codigo: trimmed });
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const queryParams = new URLSearchParams({ codigo: trimmed });
+        if (editing) {
+          queryParams.set('excludeId', editing.id);
+        }
+        const res = await fetch(
+          `/api/empleados/validar-codigo?${queryParams.toString()}`,
+        );
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setCodeCheckState({
+            status: 'error',
+            codigo: trimmed,
+            message: 'No fue posible verificar el código.',
+          });
+          return;
+        }
+
+        const data = (await res.json()) as ValidarCodigoEmpleadoResponse;
+        if (!active) return;
+
+        if (data.disponible) {
+          setCodeCheckState({ status: 'available', codigo: trimmed });
+          if (form.formState.errors.codigo_empleado?.type === 'manual') {
+            form.clearErrors('codigo_empleado');
+          }
+        } else {
+          setCodeCheckState({
+            status: 'unavailable',
+            codigo: trimmed,
+            empleadoExistente: data.empleadoExistente,
+          });
+          const detail = data.empleadoExistente
+            ? `El código "${trimmed}" ya está registrado por ${data.empleadoExistente.nombre} (${data.empleadoExistente.estatus === 'A' ? 'Activo' : 'Inactivo'}).`
+            : `El código "${trimmed}" ya está registrado en la empresa.`;
+          form.setError('codigo_empleado', {
+            type: 'manual',
+            message: detail,
+          });
+        }
+      } catch {
+        if (active) {
+          setCodeCheckState({
+            status: 'error',
+            codigo: trimmed,
+            message: 'Error de red al verificar disponibilidad.',
+          });
+        }
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [codigoValue, editing, form, sheetOpen]);
+
   const { data, isLoading } = useQuery<EmpleadosResponse>({
     queryKey: [
       'empleados-list',
@@ -126,17 +248,23 @@ export default function EmpleadosPage() {
       search,
       estatusFilter,
       sucursalFilter,
+      sortBy,
+      sortDir,
     ],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
+        sortBy,
+        sortDir,
       });
       if (estatusFilter) params.set('estatus', estatusFilter);
       if (sucursalFilter) params.set('sucursal_id', sucursalFilter);
 
-      const res = await fetch(`/api/empleados?${params.toString()}`);
+      const res = await fetch(`/api/empleados?${params.toString()}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) {
         throw new Error('Error al cargar empleados');
       }
@@ -145,6 +273,18 @@ export default function EmpleadosPage() {
   });
 
   const sucursales = data?.sucursales ?? [];
+
+  const { data: currentUser } = useCurrentUser();
+  const effectiveTenantId =
+    currentUser?.tenantId ??
+    (data?.data?.[0]?.tenant_id as string | undefined);
+
+  const { status: realtimeState } = useTenantChannel({
+    tenantId: effectiveTenantId,
+    queryKeysToInvalidate: [['empleados-list']],
+    events: ['*'],
+  });
+
   const [stagedPhoto, setStagedPhoto] =
     React.useState<StagedPhotoPayload | null>(null);
 
@@ -242,6 +382,7 @@ export default function EmpleadosPage() {
   function openNewSheet() {
     setEditing(null);
     setStagedPhoto(null);
+    setCodeCheckState({ status: 'idle' });
     form.reset({
       codigo_empleado: '',
       nombre_completo: '',
@@ -257,6 +398,7 @@ export default function EmpleadosPage() {
   function openEditSheet(row: EmpleadoRow, section: 'datos' | 'foto' = 'datos') {
     setEditing(row);
     setStagedPhoto(null);
+    setCodeCheckState({ status: 'available', codigo: row.codigo_empleado });
     form.reset({
       codigo_empleado: row.codigo_empleado,
       nombre_completo: row.nombre_completo,
@@ -277,7 +419,40 @@ export default function EmpleadosPage() {
     }
   }
 
+  function handleFormInvalid(errors: Record<string, { message?: string }>) {
+    const errorValues = Object.values(errors);
+    const firstErr = errorValues[0];
+    toast({
+      title: 'Verifica los datos del empleado',
+      description:
+        firstErr?.message ??
+        'Revisa los campos obligatorios o con formato incorrecto en el formulario.',
+      variant: 'danger',
+    });
+  }
+
   async function handleSave(values: EmpleadoFormOutput) {
+    if (codeCheckState.status === 'unavailable') {
+      toast({
+        title: 'Código de empleado no disponible',
+        description:
+          form.formState.errors.codigo_empleado?.message ??
+          'El código de empleado ya está en uso. Ingresa un código disponible.',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    if (codeCheckState.status === 'checking') {
+      toast({
+        title: 'Verificando código',
+        description:
+          'Espera un momento mientras se verifica la disponibilidad del código.',
+        variant: 'default',
+      });
+      return;
+    }
+
     const rawPayload = {
       ...(editing ? { id: editing.id } : {}),
       codigo_empleado: values.codigo_empleado,
@@ -317,6 +492,18 @@ export default function EmpleadosPage() {
         error?: string;
       };
       if (!res.ok || !json.data) {
+        if (res.status === 409) {
+          form.setError('codigo_empleado', {
+            type: 'manual',
+            message:
+              json.error ??
+              'El código de empleado ya está en uso. Elige un código disponible.',
+          });
+          setCodeCheckState({
+            status: 'unavailable',
+            codigo: values.codigo_empleado,
+          });
+        }
         toast({
           title: 'Error al guardar empleado',
           description: json.error ?? 'Verifica los datos ingresados.',
@@ -325,23 +512,26 @@ export default function EmpleadosPage() {
         return;
       }
 
-      if (!editing && stagedPhoto) {
+      const targetId = editing ? editing.id : json.data.id;
+
+      if (stagedPhoto) {
         const photoForm = new FormData();
         photoForm.append('file', stagedPhoto.file);
-        const photoRes = await fetch(`/api/empleados/${json.data.id}/foto`, {
+        const photoRes = await fetch(`/api/empleados/${targetId}/foto`, {
           method: 'POST',
           body: photoForm,
         });
 
-        await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
-
         if (!photoRes.ok) {
+          await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
           const photoErr = (await photoRes.json().catch(() => ({}))) as {
             error?: string;
           };
-          setEditing(json.data);
+          if (!editing) setEditing(json.data);
           toast({
-            title: 'Empleado creado, pero falló la subida de foto',
+            title: editing
+              ? 'Empleado actualizado, pero falló la subida de foto'
+              : 'Empleado creado, pero falló la subida de foto',
             description:
               photoErr.error ??
               'Puedes reintentar subir la fotografía desde este panel.',
@@ -350,10 +540,14 @@ export default function EmpleadosPage() {
           return;
         }
 
+        await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
         setStagedPhoto(null);
         setSheetOpen(false);
+        setEditing(null);
         toast({
-          title: 'Empleado y fotografía registrados',
+          title: editing
+            ? 'Empleado y fotografía actualizados'
+            : 'Empleado y fotografía registrados',
           description: 'La foto se guardó optimizada a ≤ 720 px.',
           variant: 'success',
         });
@@ -365,15 +559,13 @@ export default function EmpleadosPage() {
         title: editing ? 'Empleado actualizado' : 'Empleado registrado',
         description: editing
           ? 'Los cambios quedaron guardados.'
-          : 'Ahora puedes subir o tomar su fotografía en la parte inferior.',
+          : `${json.data.nombre_completo} fue registrado correctamente.`,
         variant: 'success',
       });
 
-      if (!editing) {
-        setEditing(json.data);
-      } else {
-        setSheetOpen(false);
-      }
+      setSheetOpen(false);
+      setEditing(null);
+      setStagedPhoto(null);
     } finally {
       setSubmitting(false);
     }
@@ -392,6 +584,7 @@ export default function EmpleadosPage() {
             <div className="flex items-center">
               {thumbUrl ? (
                 <img
+                  key={thumbUrl}
                   src={thumbUrl}
                   alt={`Fotografía de ${row.original.nombre_completo}`}
                   className="size-9 rounded-full border border-[var(--separator)] object-cover"
@@ -549,6 +742,7 @@ export default function EmpleadosPage() {
       title="Padrón de Empleados y Fotografía"
       subtitle="Sincronizado con CONTPAQi Nóminas / TRESS · Fotografía privada con URLs firmadas"
       mode="client"
+      realtimeState={realtimeState}
       actions={
         <Button onClick={openNewSheet}>
           <Plus className="size-4" aria-hidden="true" />
@@ -571,6 +765,12 @@ export default function EmpleadosPage() {
           setPage(1);
         }}
         searchPlaceholder="Buscar por número de empleado, nombre o departamento…"
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={(colId, dir) => {
+          setSortBy(colId);
+          setSortDir(dir);
+        }}
         filters={[
           {
             id: 'estatus',
@@ -638,13 +838,22 @@ export default function EmpleadosPage() {
             <Button
               type="submit"
               form="empleado-sheet-form"
-              disabled={submitting}
+              disabled={
+                submitting ||
+                codeCheckState.status === 'checking' ||
+                codeCheckState.status === 'unavailable'
+              }
+              onClick={() => {
+                void form.handleSubmit(handleSave, handleFormInvalid)();
+              }}
             >
               {submitting
                 ? 'Guardando…'
-                : editing
-                  ? 'Guardar datos'
-                  : 'Crear empleado'}
+                : codeCheckState.status === 'checking'
+                  ? 'Verificando código…'
+                  : editing
+                    ? 'Guardar datos'
+                    : 'Crear empleado'}
             </Button>
           </>
         }
@@ -654,7 +863,7 @@ export default function EmpleadosPage() {
             <form
               id="empleado-sheet-form"
               noValidate
-              onSubmit={form.handleSubmit(handleSave)}
+              onSubmit={form.handleSubmit(handleSave, handleFormInvalid)}
               className="flex flex-col gap-[var(--s-4)]"
             >
               <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
@@ -670,6 +879,36 @@ export default function EmpleadosPage() {
                           {...field}
                         />
                       </FormControl>
+                      {codeCheckState.status === 'checking' && field.value ? (
+                        <p
+                          className="flex items-center gap-[var(--s-1)] text-xs text-[var(--text-2)] animate-pulse"
+                          role="status"
+                        >
+                          <Loader2 className="size-3.5 animate-spin text-[var(--accent)]" />
+                          <span>Comprobando disponibilidad del código…</span>
+                        </p>
+                      ) : null}
+                      {codeCheckState.status === 'available' &&
+                      field.value &&
+                      !form.formState.errors.codigo_empleado ? (
+                        <p
+                          className="flex items-center gap-[var(--s-1)] text-xs font-medium text-[var(--success)]"
+                          role="status"
+                        >
+                          <CheckCircle2 className="size-3.5" />
+                          <span>Código disponible</span>
+                        </p>
+                      ) : null}
+                      {codeCheckState.status === 'error' &&
+                      !form.formState.errors.codigo_empleado ? (
+                        <p
+                          className="flex items-center gap-[var(--s-1)] text-xs text-[var(--warning)]"
+                          role="status"
+                        >
+                          <AlertCircle className="size-3.5" />
+                          <span>{codeCheckState.message}</span>
+                        </p>
+                      ) : null}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -820,7 +1059,18 @@ export default function EmpleadosPage() {
                   : null
               }
               onStagedChange={setStagedPhoto}
-              onSaved={() => {
+              onSaved={(saved) => {
+                setEditing((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        foto_path: saved.foto_path,
+                        foto_thumb_path: saved.foto_thumb_path,
+                        foto_signed_url: saved.signed_url,
+                        foto_thumb_signed_url: saved.signed_thumb_url,
+                      }
+                    : null,
+                );
                 void queryClient.invalidateQueries({
                   queryKey: ['empleados-list'],
                 });

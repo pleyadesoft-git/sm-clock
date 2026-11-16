@@ -30,6 +30,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { PasskeySecurityCard } from '@/components/features/auth/passkey-security-card';
+import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export interface CurrentUserProfileData {
@@ -82,6 +84,18 @@ export default function PerfilUsuarioPage() {
   });
 
   const profile = meRes?.data;
+
+  const { status: tenantState } = useTenantChannel({
+    tenantId: profile?.tenantId,
+    queryKeysToInvalidate: [['perfil-usuario']],
+    events: ['*'],
+  });
+  const { status: adminState } = useAdminChannel({
+    queryKeysToInvalidate: [['perfil-usuario']],
+    events: ['*'],
+  });
+  const realtimeState =
+    profile?.rol === 'SUPER_ADMIN' ? adminState : tenantState;
 
   React.useEffect(() => {
     if (!profile) return;
@@ -173,6 +187,7 @@ export default function PerfilUsuarioPage() {
       title="Mi Perfil y Seguridad"
       subtitle="Administra tus datos principales (nombre, correo), usuario + contraseña, datos biométricos y llaves"
       mode={shellMode}
+      realtimeState={realtimeState}
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-[var(--s-6)]">
         {/* Resumen de identidad y fotografía Google OAuth */}

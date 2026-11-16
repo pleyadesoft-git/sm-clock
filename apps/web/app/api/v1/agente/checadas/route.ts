@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AgentChecadasBatchSchema } from '@sm-clock/contracts';
 import { authenticateAgentRequest } from '@/lib/server/agent-auth';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
 /**
@@ -78,24 +79,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // Emitir evento ligero (sin PII) al canal privado de Supabase Realtime Broadcast
   if (insertedCount > 0) {
-    try {
-      const channel = admin.channel(`tenant:${tenantId}:checadas`, {
-        config: { broadcast: { ack: false } },
-      });
-      await channel.send({
-        type: 'broadcast',
-        event: 'nueva_checada',
-        payload: {
-          lote_id: parsed.data.lote_id,
-          nuevas: insertedCount,
-          ultimo_id: insertedRows?.[0]?.id ?? null,
-          ts_utc: new Date().toISOString(),
-        },
-      });
-      await admin.removeChannel(channel);
-    } catch {
-      // No fallar la ingesta si el broadcast falla momentáneamente
-    }
+    await broadcastTenantEvent(tenantId, 'nueva_checada', {
+      lote_id: parsed.data.lote_id,
+      nuevas: insertedCount,
+      ultimo_id: insertedRows?.[0]?.id ?? null,
+    });
   }
 
   return NextResponse.json({

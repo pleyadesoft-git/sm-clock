@@ -12,6 +12,7 @@ import {
   sendTenantEmail,
 } from '@/lib/server/smtp-mailer';
 import { getPublicAppOrigin } from '@/lib/server/origin';
+import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 const INVITE_TTL_DAYS = 7;
@@ -297,6 +298,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       smtp_provider: emailResult.provider,
       email_delivered: emailResult.delivered,
     },
+  });
+
+  await broadcastTenantEvent(tenantId, 'usuarios_changed', {
+    accion: 'INVITAR',
+    email: parsed.data.email,
   });
 
   return NextResponse.json(

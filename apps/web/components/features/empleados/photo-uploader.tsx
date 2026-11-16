@@ -189,7 +189,38 @@ export function PhotoUploader({
 
   React.useEffect(() => {
     drawCanvasPreview();
-  }, [drawCanvasPreview]);
+
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !loadedImage) return;
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void exportCanvasToOptimizedBlob(canvas, 0.85)
+        .then(({ blob, mimeType }) => {
+          if (cancelled) return;
+          const ext = mimeType === 'image/webp' ? 'webp' : 'jpg';
+          const fileToSend = new File([blob], `empleado.${ext}`, {
+            type: mimeType,
+          });
+          const previewUrl = URL.createObjectURL(fileToSend);
+          const staged: StagedPhotoPayload = {
+            file: fileToSend,
+            previewUrl,
+            width: canvas.width,
+            height: canvas.height,
+            sizeBytes: fileToSend.size,
+          };
+          setStagedInfo(staged);
+          onStagedChange?.(staged);
+        })
+        .catch(() => {});
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [drawCanvasPreview, loadedImage, onStagedChange]);
 
   async function loadFileIntoEditor(file: File) {
     setErrorMsg(null);
@@ -414,6 +445,8 @@ export function PhotoUploader({
       }
       setLoadedImage(null);
       setSourceSize(null);
+      setStagedInfo(null);
+      onStagedChange?.(null);
 
       toast({
         title: 'Fotografía actualizada',
@@ -482,7 +515,10 @@ export function PhotoUploader({
           )}
           <div className="flex flex-col">
             <span className="text-sm font-semibold text-[var(--text)]">
-              Fotografía del trabajador
+              Fotografía del trabajador{' '}
+              <span className="text-xs font-normal text-[var(--text-2)]">
+                (Opcional)
+              </span>
             </span>
             <span className="text-xs text-[var(--text-2)]">
               Máximo 720 px por lado · Almacenamiento privado sin EXIF

@@ -33,6 +33,7 @@ import type { z } from 'zod';
 
 type InviteUserFormInput = z.input<typeof InviteUserRequestSchema>;
 type InviteUserFormOutput = z.output<typeof InviteUserRequestSchema>;
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,6 +61,8 @@ export default function UsuariosPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
+  const [sortBy, setSortBy] = React.useState('created_at');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
   const [rolFilter, setRolFilter] = React.useState<
     'TODOS' | 'ADMIN_EMPRESA' | 'OPERADOR'
   >('TODOS');
@@ -104,6 +107,11 @@ export default function UsuariosPage() {
       }
       return (await res.json()) as UsuariosResponse;
     },
+  });
+
+  const { status: realtimeState } = useTenantChannel({
+    queryKeysToInvalidate: [['usuarios-tenant']],
+    events: ['*'],
   });
 
   function openInviteSheet() {
@@ -404,11 +412,59 @@ export default function UsuariosPage() {
     [],
   );
 
+  const allRows = data?.data ?? [];
+  const sortedRows = React.useMemo(() => {
+    if (!sortBy) return allRows;
+    return [...allRows].sort((a, b) => {
+      let aVal: unknown;
+      let bVal: unknown;
+      if (sortBy === 'nombre_completo') {
+        aVal = a.nombre_completo;
+        bVal = b.nombre_completo;
+      } else if (sortBy === 'email') {
+        aVal = a.email;
+        bVal = b.email;
+      } else if (sortBy === 'rol') {
+        aVal = a.rol;
+        bVal = b.rol;
+      } else if (sortBy === 'estatus') {
+        aVal = a.estatus;
+        bVal = b.estatus;
+      } else if (sortBy === 'auth_provider') {
+        aVal = a.auth_provider;
+        bVal = b.auth_provider;
+      } else {
+        aVal = (a as unknown as Record<string, unknown>)[sortBy];
+        bVal = (b as unknown as Record<string, unknown>)[sortBy];
+      }
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return sortDir === 'asc' ? 1 : -1;
+      if (bVal == null) return sortDir === 'asc' ? -1 : 1;
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDir === 'asc'
+          ? aVal.localeCompare(bVal, 'es-MX')
+          : bVal.localeCompare(aVal, 'es-MX');
+      }
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal), 'es-MX')
+        : String(bVal).localeCompare(String(aVal), 'es-MX');
+    });
+  }, [allRows, sortBy, sortDir]);
+
+  const pagedRows = React.useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedRows.slice(start, start + pageSize);
+  }, [sortedRows, page, pageSize]);
+
   return (
     <AppShell
       title="Usuarios e Invitaciones"
       subtitle="Administra el acceso por invitación a tu empresa con roles Admin y Operador"
       mode="client"
+      realtimeState={realtimeState}
       actions={
         <Button onClick={openInviteSheet}>
           <UserPlus className="size-4" aria-hidden="true" />
@@ -462,8 +518,8 @@ export default function UsuariosPage() {
         <DataTable
           caption="Usuarios e invitaciones de la organización"
           columns={columns}
-          data={data?.data ?? []}
-          total={data?.total ?? 0}
+          data={pagedRows}
+          total={allRows.length}
           page={page}
           pageSize={pageSize}
           onPageChange={setPage}
@@ -471,6 +527,12 @@ export default function UsuariosPage() {
           search={search}
           onSearchChange={setSearch}
           searchPlaceholder="Buscar por nombre o correo electrónico…"
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(colId, dir) => {
+            setSortBy(colId);
+            setSortDir(dir);
+          }}
           isLoading={isLoading}
           exportFilename="usuarios-empresa-sm-clock"
           exportColumns={exportColumns}

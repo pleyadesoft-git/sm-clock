@@ -75,15 +75,27 @@ export default function DashboardPage() {
   const [pageSize, setPageSize] = React.useState(25);
   const [search, setSearch] = React.useState('');
   const [filtroMarca, setFiltroMarca] = React.useState<FiltroMarca>('TODAS');
+  const [sortBy, setSortBy] = React.useState('ts_utc');
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
 
   const { data, isLoading } = useQuery<DashboardChecadasResponse>({
-    queryKey: ['checadas-dashboard', page, pageSize, search, filtroMarca],
+    queryKey: [
+      'checadas-dashboard',
+      page,
+      pageSize,
+      search,
+      filtroMarca,
+      sortBy,
+      sortDir,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         search,
         filtroMarca,
+        sortBy,
+        sortDir,
       });
       const res = await fetch(`/api/checadas?${params.toString()}`);
       if (!res.ok) {
@@ -372,6 +384,12 @@ export default function DashboardPage() {
               setPage(1);
             }}
             searchPlaceholder="Buscar por número de empleado (ej. 1001)…"
+            sortBy={sortBy}
+            sortDir={sortDir}
+            onSortChange={(colId, dir) => {
+              setSortBy(colId);
+              setSortDir(dir);
+            }}
             isLoading={isLoading}
             exportFilename="checadas-asistencia-tijuana"
             exportColumns={exportColumns}

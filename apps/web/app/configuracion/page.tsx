@@ -17,6 +17,7 @@ import {
   SmtpConfigUpsertSchema,
   type SmtpSecurity,
 } from '@sm-clock/contracts';
+import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,11 @@ export default function ConfiguracionPage() {
       }
       return (await res.json()) as SmtpConfigResponse;
     },
+  });
+
+  const { status: realtimeState } = useTenantChannel({
+    queryKeysToInvalidate: [['smtp-config']],
+    events: ['*'],
   });
 
   React.useEffect(() => {
@@ -267,6 +273,7 @@ export default function ConfiguracionPage() {
       title="Configuración de la Empresa"
       subtitle="Ajustes de servidor de correo SMTP para envío de invitaciones y recuperación de contraseñas (Exclusivo Admin)"
       mode="client"
+      realtimeState={realtimeState}
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-[var(--s-6)]">
         <Card>
