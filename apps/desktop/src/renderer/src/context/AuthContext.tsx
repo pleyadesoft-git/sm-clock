@@ -23,6 +23,7 @@ interface AuthContextType {
   tenants: TenantOption[];
   selectedTenantId: string | null;
   loginWithCredentials: (email: string, pass: string, serverUrl?: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   loginWithEmergencyPin: (pin: string) => Promise<void>;
   logout: () => Promise<void>;
   setSelectedTenantId: (tenantId: string) => void;
@@ -40,6 +41,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     async function checkSession() {
       try {
+        const supabase = getSupabaseClient();
+
+        // 0. Si vienen tokens en la URL (retorno del callback de Google OAuth)
+        try {
+          const currentUrl = new URL(window.location.href);
+          const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+          const accessToken = hashParams.get('access_token') || currentUrl.searchParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token') || currentUrl.searchParams.get('refresh_token');
+
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        } catch {
+          // Continuar con verificación normal si falla el parseo de la URL
+        }
+
+        // 1. Probar sesión de Supabase Auth (vital tras redirección de Google OAuth)
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: perfil } = await supabase
+            .from('perfiles_usuarios')
+            .select('nombre_completo, email, rol, tenant_id')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          const rol = (perfil?.rol || session.user.app_metadata?.['rol'] || 'ADMIN_EMPRESA') as UserSession['rol'];
+          const userSession: UserSession = {
+            email: session.user.email ?? '',
+            nombre: perfil?.nombre_completo ?? (session.user.user_metadata?.['full_name'] as string) ?? 'Administrador',
+            rol,
+            tenant_id: perfil?.tenant_id ?? (session.user.app_metadata?.['tenant_id'] as string) ?? null,
+            isOfflinePin: false,
+          };
+          setUser(userSession);
+          setSelectedTenantIdState(userSession.tenant_id);
+          setIsLoading(false);
+          return;
+        }
+
+        // 2. Probar sesión en el backend local del agente
         const me = await agentApi.getMe();
         if (me.authenticated && me.usuario) {
           setUser({
@@ -58,6 +103,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     checkSession();
+
+    // Escuchar eventos de cambio de sesión en Supabase (ej. cuando regresa de Google OAuth)
+    const supabase = getSupabaseClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+        const { data: perfil } = await supabase
+          .from('perfiles_usuarios')
+          .select('nombre_completo, email, rol, tenant_id')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        const rol = (perfil?.rol || session.user.app_metadata?.['rol'] || 'ADMIN_EMPRESA') as UserSession['rol'];
+        const userSession: UserSession = {
+          email: session.user.email ?? '',
+          nombre: perfil?.nombre_completo ?? (session.user.user_metadata?.['full_name'] as string) ?? 'Administrador',
+          rol,
+          tenant_id: perfil?.tenant_id ?? (session.user.app_metadata?.['tenant_id'] as string) ?? null,
+          isOfflinePin: false,
+        };
+        setUser(userSession);
+        setSelectedTenantIdState(userSession.tenant_id);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Si es Super-Admin, cargar lista de tenants disponibles de Supabase
@@ -128,6 +202,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithGoogle = async () => {
+    setIsLoading(true);
+    try {
+      const supabase = getSupabaseClient();
+
+      const isLocal =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+      // En desarrollo local nos apoyamos en el callback de la app web (puerto 3000),
+      // el cual ya está autorizado en la lista de redirección de Supabase.
+      const webBase = isLocal
+        ? 'http://localhost:3000'
+        : (import.meta.env.VITE_WEB_URL as string | undefined) ||
+          (import.meta.env.NEXT_PUBLIC_APP_URL as string | undefined) ||
+          'https://sm-clock.pleyadesoft.com';
+
+      const targetOrigin = window.location.origin;
+      const callbackUrl = `${webBase}/api/auth/callback?source=desktop&target=${encodeURIComponent(targetOrigin)}`;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: callbackUrl,
+          queryParams: {
+            prompt: 'select_account',
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (window.electronAPI?.openExternal && data?.url) {
+        await window.electronAPI.openExternal(data.url);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const loginWithEmergencyPin = async (pin: string) => {
     setIsLoading(true);
     try {
@@ -175,6 +291,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         tenants,
         selectedTenantId,
         loginWithCredentials,
+        loginWithGoogle,
         loginWithEmergencyPin,
         logout,
         setSelectedTenantId,
