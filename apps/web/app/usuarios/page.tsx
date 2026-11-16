@@ -3,13 +3,16 @@
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Ban,
+  AlertTriangle,
   Copy,
   MailPlus,
+  MoreVertical,
   Pencil,
   Shield,
+  Trash2,
   UserCheck,
   UserPlus,
+  X,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -204,22 +207,98 @@ export default function UsuariosPage() {
     }
   }
 
-  async function handleRevokeInvitation(invitationId: string) {
-    const res = await fetch(`/api/usuarios/${invitationId}`, {
-      method: 'DELETE',
-    });
-    if (!res.ok) {
-      toast({
-        title: 'No se pudo revocar la invitación',
-        variant: 'danger',
-      });
-      return;
+  const [menuState, setMenuState] = React.useState<{
+    item: TenantUserRow;
+    top: number;
+    right: number;
+  } | null>(null);
+  const [deletingTarget, setDeletingTarget] =
+    React.useState<TenantUserRow | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+  const deleteDialogRef = React.useRef<HTMLDialogElement | null>(null);
+
+  React.useEffect(() => {
+    if (!menuState) return;
+
+    const closeMenu = () => setMenuState(null);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuState(null);
+      }
+    };
+
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuState]);
+
+  React.useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (!dialog) return;
+
+    if (deletingTarget && !dialog.open) {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
+    } else if (!deletingTarget && dialog.open) {
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
     }
-    await queryClient.invalidateQueries({ queryKey: ['usuarios-tenant'] });
-    toast({
-      title: 'Invitación revocada',
-      variant: 'success',
-    });
+  }, [deletingTarget]);
+
+  React.useEffect(() => {
+    const dialog = deleteDialogRef.current;
+    if (!dialog) return;
+
+    const handleClose = () => {
+      dialog.returnValue = '';
+      setDeletingTarget(null);
+    };
+
+    dialog.addEventListener('close', handleClose);
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+    };
+  }, []);
+
+  async function handleConfirmDelete() {
+    if (!deletingTarget) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/usuarios/${deletingTarget.id}`, {
+        method: 'DELETE',
+      });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({
+          title: 'No se pudo completar el borrado',
+          description: body.error ?? 'Ocurrió un error al eliminar el registro.',
+          variant: 'danger',
+        });
+        return;
+      }
+
+      const wasInvitation = deletingTarget.tipo_registro === 'INVITACION';
+      setDeletingTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['usuarios-tenant'] });
+      toast({
+        title: wasInvitation ? 'Invitación eliminada' : 'Usuario eliminado',
+        variant: 'success',
+      });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const columns = React.useMemo<DataTableColumnDef<TenantUserRow>[]>(
@@ -299,37 +378,38 @@ export default function UsuariosPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const item = row.original;
-          if (item.tipo_registro === 'USUARIO') {
-            return (
-              <div className="flex justify-end">
-                <Button
-                  variant="secondary"
-                  onClick={() => openEditUserSheet(item)}
-                >
-                  <Pencil className="size-3.5" aria-hidden="true" />
-                  <span>Permisos</span>
-                </Button>
-              </div>
-            );
-          }
-          if (item.estatus === 'PENDIENTE') {
-            return (
-              <div className="flex justify-end">
-                <Button
-                  variant="destructive"
-                  onClick={() => void handleRevokeInvitation(item.id)}
-                >
-                  <Ban className="size-3.5" aria-hidden="true" />
-                  <span>Revocar</span>
-                </Button>
-              </div>
-            );
-          }
-          return null;
+          const isOpen = menuState?.item.id === item.id;
+          return (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="plain"
+                aria-label={`Acciones para ${item.nombre_completo}`}
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+                className="size-8 p-0"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (isOpen) {
+                    setMenuState(null);
+                    return;
+                  }
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setMenuState({
+                    item,
+                    top: rect.bottom + 4,
+                    right: Math.max(8, window.innerWidth - rect.right),
+                  });
+                }}
+              >
+                <MoreVertical className="size-4" aria-hidden="true" />
+              </Button>
+            </div>
+          );
         },
       },
     ],
-    [],
+    [menuState?.item.id],
   );
 
   const exportColumns = React.useMemo<ExportColumn<TenantUserRow>[]>(
@@ -659,6 +739,120 @@ export default function UsuariosPage() {
           </div>
         </form>
       </Sheet>
+
+      {/* Menú contextual de acciones por fila */}
+      {menuState ? (
+        <div
+          role="menu"
+          aria-label={`Acciones para ${menuState.item.nombre_completo}`}
+          style={{ top: menuState.top, right: menuState.right }}
+          className="fixed z-50 flex min-w-[176px] flex-col rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-1)] shadow-[var(--shadow-2)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {menuState.item.tipo_registro === 'USUARIO' ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-[var(--s-2)] rounded-[var(--r-sm)] px-[var(--s-3)] py-[var(--s-2)] text-left text-sm font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
+              onClick={() => {
+                const target = menuState.item;
+                setMenuState(null);
+                openEditUserSheet(target);
+              }}
+            >
+              <Pencil className="size-4 text-[var(--text-2)]" aria-hidden="true" />
+              <span>Editar</span>
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-[var(--s-2)] rounded-[var(--r-sm)] px-[var(--s-3)] py-[var(--s-2)] text-left text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger-bg)]"
+            onClick={() => {
+              const target = menuState.item;
+              setMenuState(null);
+              setDeletingTarget(target);
+            }}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            <span>Borrar</span>
+          </button>
+        </div>
+      ) : null}
+
+      {/* Confirmation dialog para confirmar borrado */}
+      <dialog
+        ref={deleteDialogRef}
+        aria-labelledby="delete-user-dialog-title"
+        className="fixed inset-0 z-50 m-auto flex max-h-[85vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+      >
+        <div className="flex items-center justify-between border-b border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-5)] py-[var(--s-4)] backdrop-blur-[var(--blur)]">
+          <div className="flex items-center gap-[var(--s-2)]">
+            <div className="flex size-8 items-center justify-center rounded-full bg-[var(--danger-bg)] text-[var(--danger)]">
+              <AlertTriangle className="size-4" strokeWidth={2} aria-hidden="true" />
+            </div>
+            <h2
+              id="delete-user-dialog-title"
+              className="text-base font-semibold text-[var(--text)]"
+            >
+              {deletingTarget?.tipo_registro === 'INVITACION'
+                ? 'Confirmar borrado de invitación'
+                : 'Confirmar borrado de usuario'}
+            </h2>
+          </div>
+          <Button
+            type="button"
+            variant="plain"
+            aria-label="Cerrar confirmación de borrado"
+            onClick={() => setDeletingTarget(null)}
+            disabled={deleting}
+            className="size-8 p-0"
+          >
+            <X className="size-4" strokeWidth={1.75} aria-hidden="true" />
+          </Button>
+        </div>
+
+        <div className="ios-sheet-body flex-1 overflow-y-auto px-[var(--s-5)] py-[var(--s-4)]">
+          <p className="text-sm leading-relaxed text-[var(--text)]">
+            {deletingTarget?.tipo_registro === 'INVITACION' ? (
+              <>
+                ¿Estás seguro de que deseas eliminar la invitación para{' '}
+                <span className="font-semibold">{deletingTarget.email}</span>? El
+                enlace enviado dejará de ser válido.
+              </>
+            ) : (
+              <>
+                ¿Estás seguro de que deseas eliminar al usuario{' '}
+                <span className="font-semibold">
+                  {deletingTarget?.nombre_completo}
+                </span>{' '}
+                ({deletingTarget?.email})? Se desactivará su acceso a la empresa.
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="ios-sheet-footer flex items-center justify-end gap-[var(--s-2)] border-t border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-5)] py-[var(--s-3)] backdrop-blur-[var(--blur)]">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setDeletingTarget(null)}
+            disabled={deleting}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => void handleConfirmDelete()}
+            disabled={deleting}
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            <span>{deleting ? 'Borrando…' : 'Confirmar borrado'}</span>
+          </Button>
+        </div>
+      </dialog>
     </AppShell>
   );
 }

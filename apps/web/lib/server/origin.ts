@@ -2,14 +2,23 @@ import type { NextRequest } from 'next/server';
 
 const CANONICAL_PRODUCTION_ORIGIN = 'https://sm-clock.pleyadesoft.com';
 
+function isLocalhost(host: string): boolean {
+  const lower = host.trim().toLowerCase();
+  return (
+    lower.startsWith('localhost') ||
+    lower.startsWith('127.0.0.1') ||
+    lower.startsWith('0.0.0.0') ||
+    lower.startsWith('::1')
+  );
+}
+
 function isInternalOrLocalHost(host: string): boolean {
   const lower = host.trim().toLowerCase();
   return (
     !lower ||
-    lower.startsWith('localhost') ||
-    lower.startsWith('127.0.0.1') ||
-    lower.startsWith('0.0.0.0') ||
-    lower.startsWith('web:')
+    isLocalhost(lower) ||
+    lower.startsWith('web:') ||
+    lower === 'web'
   );
 }
 
@@ -60,18 +69,25 @@ export function getRequestOrigin(request: Request | NextRequest): string {
     return `${proto}://${host}`;
   }
 
-  // 3. Fallback a variables de entorno de dominio público en producción
+  // 3. Si la petición proviene de localhost / 127.0.0.1 (desarrollo local directo)
+  // o estamos en modo desarrollo: mantener siempre el origen local de la petición
+  const requestUrl = new URL(request.url);
+  if (
+    process.env['NODE_ENV'] === 'development' ||
+    isLocalhost(requestUrl.hostname) ||
+    (host && isLocalhost(host))
+  ) {
+    return requestUrl.origin;
+  }
+
+  // 4. Fallback a variables de entorno de dominio público en producción (ej. Docker interno 'web:3000')
   const configured = getConfiguredPublicOrigin();
   if (configured) {
     return configured;
   }
 
-  // 4. Fallback local a la URL recibida
-  try {
-    return new URL(request.url).origin;
-  } catch {
-    return 'http://localhost:3000';
-  }
+  // 5. Fallback final a la URL recibida
+  return requestUrl.origin;
 }
 
 /**

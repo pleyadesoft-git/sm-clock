@@ -28,6 +28,23 @@ class LocalEmployee:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class LocalClockRecord:
+    id: str
+    nombre: str
+    tipo: str  # 'ZKTECO' | 'HIKVISION' | 'TACLOUD'
+    ip: str
+    puerto: int
+    comm_key: int
+    usuario: str | None
+    password_cifrada: str | None
+    activo: bool
+    ultimo_ping: str | None
+    ultimo_error: str | None
+    created_at: str
+    updated_at: str
+
+
 class AgentLocalDatabase:
     """
     Base de datos SQLite local en modo WAL (`PRAGMA journal_mode=WAL;`).
@@ -109,6 +126,38 @@ class AgentLocalDatabase:
                 registros_procesados INTEGER NOT NULL,
                 estatus TEXT NOT NULL,
                 error_detalle TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fuentes_locales (
+                id TEXT PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                tipo TEXT NOT NULL CHECK (tipo IN ('ZKTECO', 'HIKVISION', 'TACLOUD')),
+                ip TEXT NOT NULL DEFAULT '127.0.0.1',
+                puerto INTEGER NOT NULL DEFAULT 4370,
+                comm_key INTEGER NOT NULL DEFAULT 0,
+                usuario TEXT,
+                password_cifrada TEXT,
+                activo INTEGER NOT NULL DEFAULT 1,
+                ultimo_ping TEXT,
+                ultimo_error TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sesiones_auth (
+                token TEXT PRIMARY KEY,
+                email TEXT NOT NULL,
+                nombre TEXT NOT NULL,
+                rol TEXT NOT NULL,
+                tenant_id TEXT,
+                expira_en TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             """
@@ -375,6 +424,214 @@ class AgentLocalDatabase:
         )
         self._conn.commit()
         return cur.lastrowid or 0
+
+    # --- CRUD de Fuentes Locales (Relojes ZKTeco, Hikvision, TA.Cloud) ---
+
+    def list_fuentes_locales(self, only_active: bool = False) -> list[LocalClockRecord]:
+        cur = self._conn.cursor()
+        query = "SELECT * FROM fuentes_locales"
+        if only_active:
+            query += " WHERE activo = 1"
+        query += " ORDER BY nombre ASC;"
+
+        rows = cur.execute(query).fetchall()
+        return [
+            LocalClockRecord(
+                id=str(r["id"]),
+                nombre=str(r["nombre"]),
+                tipo=str(r["tipo"]),
+                ip=str(r["ip"]),
+                puerto=int(r["puerto"]),
+                comm_key=int(r["comm_key"]),
+                usuario=str(r["usuario"]) if r["usuario"] is not None else None,
+                password_cifrada=str(r["password_cifrada"]) if r["password_cifrada"] is not None else None,
+                activo=bool(r["activo"]),
+                ultimo_ping=str(r["ultimo_ping"]) if r["ultimo_ping"] is not None else None,
+                ultimo_error=str(r["ultimo_error"]) if r["ultimo_error"] is not None else None,
+                created_at=str(r["created_at"]),
+                updated_at=str(r["updated_at"]),
+            )
+            for r in rows
+        ]
+
+    def get_fuente_local(self, clock_id: str) -> LocalClockRecord | None:
+        cur = self._conn.cursor()
+        row = cur.execute(
+            "SELECT * FROM fuentes_locales WHERE id = ?;",
+            (clock_id.strip(),),
+        ).fetchone()
+        if not row:
+            return None
+        return LocalClockRecord(
+            id=str(row["id"]),
+            nombre=str(row["nombre"]),
+            tipo=str(row["tipo"]),
+            ip=str(row["ip"]),
+            puerto=int(row["puerto"]),
+            comm_key=int(row["comm_key"]),
+            usuario=str(row["usuario"]) if row["usuario"] is not None else None,
+            password_cifrada=str(row["password_cifrada"]) if row["password_cifrada"] is not None else None,
+            activo=bool(row["activo"]),
+            ultimo_ping=str(row["ultimo_ping"]) if row["ultimo_ping"] is not None else None,
+            ultimo_error=str(row["ultimo_error"]) if row["ultimo_error"] is not None else None,
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def upsert_fuente_local(
+        self,
+        *,
+        clock_id: str,
+        nombre: str,
+        tipo: str,
+        ip: str = "127.0.0.1",
+        puerto: int = 4370,
+        comm_key: int = 0,
+        usuario: str | None = None,
+        password_cifrada: str | None = None,
+        activo: bool = True,
+    ) -> str:
+        cur = self._conn.cursor()
+        clean_id = clock_id.strip()
+
+        # Si no se pasó nueva password_cifrada pero ya existía una, conservarla
+        if password_cifrada is None:
+            existing = self.get_fuente_local(clean_id)
+            if existing:
+                password_cifrada = existing.password_cifrada
+
+        cur.execute(
+            """
+            INSERT INTO fuentes_locales (
+                id, nombre, tipo, ip, puerto, comm_key, usuario, password_cifrada, activo, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(id) DO UPDATE SET
+                nombre = excluded.nombre,
+                tipo = excluded.tipo,
+                ip = excluded.ip,
+                puerto = excluded.puerto,
+                comm_key = excluded.comm_key,
+                usuario = excluded.usuario,
+                password_cifrada = excluded.password_cifrada,
+                activo = excluded.activo,
+                updated_at = excluded.updated_at;
+            """,
+            (
+                clean_id,
+                nombre.strip(),
+                tipo.strip().upper(),
+                ip.strip(),
+                puerto,
+                comm_key,
+                usuario.strip() if usuario else None,
+                password_cifrada,
+                1 if activo else 0,
+            ),
+        )
+        self._conn.commit()
+        return clean_id
+
+    def delete_fuente_local(self, clock_id: str) -> bool:
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM fuentes_locales WHERE id = ?;", (clock_id.strip(),))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def update_fuente_ping_status(
+        self, clock_id: str, ok: bool, error: str | None = None
+    ) -> None:
+        cur = self._conn.cursor()
+        cur.execute(
+            """
+            UPDATE fuentes_locales
+            SET ultimo_ping = datetime('now'),
+                ultimo_error = ?,
+                updated_at = datetime('now')
+            WHERE id = ?;
+            """,
+            (None if ok else (error or "Fallo de conexión"), clock_id.strip()),
+        )
+        self._conn.commit()
+
+    def create_auth_session(
+        self,
+        *,
+        email: str,
+        nombre: str,
+        rol: str,
+        tenant_id: str | None = None,
+        ttl_hours: int = 12,
+    ) -> str:
+        import secrets
+        from datetime import datetime, timedelta, timezone
+
+        token = f"sess_{secrets.token_hex(24)}"
+        expira_dt = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+        expira_en = expira_dt.isoformat()
+
+        cur = self._conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO sesiones_auth (token, email, nombre, rol, tenant_id, expira_en)
+            VALUES (?, ?, ?, ?, ?, ?);
+            """,
+            (token, email.strip().lower(), nombre.strip(), rol.strip(), tenant_id, expira_en),
+        )
+        self._conn.commit()
+        return token
+
+    def get_auth_session(self, token: str) -> dict[str, Any] | None:
+        if not token:
+            return None
+        from datetime import datetime, timezone
+
+        cur = self._conn.cursor()
+        row = cur.execute(
+            """
+            SELECT token, email, nombre, rol, tenant_id, expira_en
+            FROM sesiones_auth
+            WHERE token = ?;
+            """,
+            (token.strip(),),
+        ).fetchone()
+
+        if not row:
+            return None
+
+        # Verificar expiración
+        try:
+            exp_clean = str(row["expira_en"]).replace("Z", "+00:00")
+            exp_dt = datetime.fromisoformat(exp_clean)
+            if datetime.now(timezone.utc) > exp_dt:
+                self.delete_auth_session(token)
+                return None
+        except Exception:
+            pass
+
+        return {
+            "token": row["token"],
+            "email": row["email"],
+            "nombre": row["nombre"],
+            "rol": row["rol"],
+            "tenant_id": row["tenant_id"],
+            "expira_en": row["expira_en"],
+        }
+
+    def delete_auth_session(self, token: str) -> bool:
+        cur = self._conn.cursor()
+        cur.execute("DELETE FROM sesiones_auth WHERE token = ?;", (token.strip(),))
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_emergency_pin(self) -> str:
+        """PIN de emergencia para técnicos/admins locales si no hay internet."""
+        pin = self.get_config("pin_emergencia")
+        if not pin:
+            return "123456"
+        return pin
+
+    def set_emergency_pin(self, new_pin: str) -> None:
+        self.set_config("pin_emergencia", new_pin.strip())
 
     def close(self) -> None:
         self._conn.close()

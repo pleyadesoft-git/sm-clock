@@ -7,12 +7,20 @@ from pathlib import Path
 
 import uvicorn
 
-from . import __version__
-from .config import AgentSettings
-from .db import AgentLocalDatabase
-from .scheduler import AgentScheduler
-from .sync import CloudSyncClient, enroll_agent_with_code
-from .ui.app import LOCAL_DIAGNOSTIC_HOST, LOCAL_DIAGNOSTIC_PORT, create_diagnostic_app
+try:
+    from . import __version__
+    from .config import AgentSettings
+    from .db import AgentLocalDatabase
+    from .scheduler import AgentScheduler
+    from .sync import CloudSyncClient, enroll_agent_with_code
+    from .ui.app import LOCAL_DIAGNOSTIC_HOST, LOCAL_DIAGNOSTIC_PORT, create_diagnostic_app
+except (ImportError, ValueError):
+    from agent import __version__
+    from agent.config import AgentSettings
+    from agent.db import AgentLocalDatabase
+    from agent.scheduler import AgentScheduler
+    from agent.sync import CloudSyncClient, enroll_agent_with_code
+    from agent.ui.app import LOCAL_DIAGNOSTIC_HOST, LOCAL_DIAGNOSTIC_PORT, create_diagnostic_app
 
 logging.basicConfig(
     level=logging.INFO,

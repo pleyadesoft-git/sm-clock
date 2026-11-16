@@ -97,31 +97,77 @@ export async function DELETE(
 
   const { id } = await context.params;
   const { tenantId, user } = auth;
-  const admin = createSupabaseServiceClient();
 
-  const { data: revokedInvite } = await admin
+  if (id === user.userId) {
+    return NextResponse.json(
+      { error: 'No puedes eliminar tu propia cuenta de administrador' },
+      { status: 400 },
+    );
+  }
+
+  const admin = createSupabaseServiceClient();
+  const nowIso = new Date().toISOString();
+
+  const { data: deletedUser, error: deleteUserError } = await admin
+    .from('perfiles_usuarios')
+    .update({
+      activo: false,
+      deleted_at: nowIso,
+    })
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .is('deleted_at', null)
+    .select('id, email, nombre_completo')
+    .maybeSingle();
+
+  if (deleteUserError) {
+    return NextResponse.json(
+      { error: 'No se pudo eliminar el usuario' },
+      { status: 500 },
+    );
+  }
+
+  if (deletedUser) {
+    await admin.auth.admin.updateUserById(id, {
+      ban_duration: '876000h',
+    });
+
+    await recordAuditLog({
+      tenantId,
+      actorId: user.userId,
+      accion: 'ELIMINAR_USUARIO_TENANT',
+      detalle: {
+        target_user_id: deletedUser.id,
+        email: deletedUser.email,
+      },
+    });
+
+    return NextResponse.json({ data: deletedUser });
+  }
+
+  const { data: deletedInvite } = await admin
     .from('invitaciones_usuarios')
-    .update({ estatus: 'REVOCADA' })
+    .delete()
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .select('id, email')
     .maybeSingle();
 
-  if (revokedInvite) {
+  if (deletedInvite) {
     await recordAuditLog({
       tenantId,
       actorId: user.userId,
-      accion: 'REVOCAR_INVITACION',
+      accion: 'ELIMINAR_INVITACION',
       detalle: {
-        invitacion_id: revokedInvite.id,
-        email: revokedInvite.email,
+        invitacion_id: deletedInvite.id,
+        email: deletedInvite.email,
       },
     });
-    return NextResponse.json({ data: revokedInvite });
+    return NextResponse.json({ data: deletedInvite });
   }
 
   return NextResponse.json(
-    { error: 'Invitación no encontrada' },
+    { error: 'Usuario o invitación no encontrada' },
     { status: 404 },
   );
 }

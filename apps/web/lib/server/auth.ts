@@ -156,6 +156,7 @@ export async function claimPendingInvitationForUser(params: {
         rol: parsedRol.data,
         auth_provider: provider,
         activo: true,
+        deleted_at: null,
         ultimo_acceso_en: nowIso,
       },
       { onConflict: 'id' },
@@ -174,6 +175,7 @@ export async function claimPendingInvitationForUser(params: {
     .eq('id', invite.id);
 
   await adminClient.auth.admin.updateUserById(params.userId, {
+    ban_duration: 'none',
     app_metadata: {
       rol: parsedRol.data,
       tenant_id: invite.tenant_id,
@@ -238,7 +240,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
     // 2. Buscar perfil existente del usuario en su empresa (por ID o por correo)
     const { data: perfilById } = await adminClient
       .from('perfiles_usuarios')
-      .select('id, rol, tenant_id, activo, nombre_completo')
+      .select('id, rol, tenant_id, activo, nombre_completo, deleted_at')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -247,7 +249,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
     if (!perfil && normalizedEmail) {
       const { data: perfilByEmail } = await adminClient
         .from('perfiles_usuarios')
-        .select('id, rol, tenant_id, activo, nombre_completo')
+        .select('id, rol, tenant_id, activo, nombre_completo, deleted_at')
         .ilike('email', normalizedEmail)
         .maybeSingle();
 
@@ -258,7 +260,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext> {
 
     if (perfil) {
       const parsedRol = UserRoleSchema.safeParse(perfil.rol);
-      if (!perfil.activo || !parsedRol.success) {
+      if (!perfil.activo || perfil.deleted_at !== null || !parsedRol.success) {
         throw new AuthError(
           'Tu cuenta de usuario está desactivada o no tiene un rol válido en el tenant',
           403,

@@ -16,6 +16,8 @@ import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 
 const INVITE_TTL_DAYS = 7;
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireTenantAdmin();
   if (!auth.ok) {
@@ -39,6 +41,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         'id, nombre_completo, email, rol, activo, auth_provider, created_at',
       )
       .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
       .order('created_at', { ascending: false }),
     admin
       .from('invitaciones_usuarios')
@@ -58,28 +61,37 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const nowMs = Date.now();
-  const rows: TenantUserRow[] = [];
+  const byEmail = new Map<string, TenantUserRow>();
 
+  // 1. Usuarios activos en perfiles_usuarios tienen prioridad absoluta
   for (const p of perfilesRes.data ?? []) {
+    if (!p.activo) continue;
+    const emailKey = p.email.trim().toLowerCase();
+    if (byEmail.has(emailKey)) continue;
     const parsedRol = UserRoleSchema.safeParse(p.rol);
     const provider: TenantUserRow['auth_provider'] =
       p.auth_provider === 'EMAIL' || p.auth_provider === 'BOTH'
         ? p.auth_provider
         : 'GOOGLE';
-    rows.push({
+    byEmail.set(emailKey, {
       id: p.id,
       tipo_registro: 'USUARIO',
       nombre_completo: p.nombre_completo,
       email: p.email,
       rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
-      estatus: p.activo ? 'ACTIVO' : 'INACTIVO',
+      estatus: 'ACTIVO',
       auth_provider: provider,
       created_at: p.created_at,
       expira_en: null,
     });
   }
 
+  // 2. Invitaciones no aceptadas: solo una fila por correo único (prioriza PENDIENTE vigente sobre REVOCADA/EXPIRADA)
   for (const inv of invitacionesRes.data ?? []) {
+    const emailKey = inv.email.trim().toLowerCase();
+    const existing = byEmail.get(emailKey);
+    if (existing?.tipo_registro === 'USUARIO') continue;
+
     const parsedRol = UserRoleSchema.safeParse(inv.rol);
     const isExpired =
       inv.estatus === 'PENDIENTE' &&
@@ -90,18 +102,48 @@ export async function GET(request: Request): Promise<NextResponse> {
         ? inv.estatus
         : 'PENDIENTE';
 
-    rows.push({
-      id: inv.id,
-      tipo_registro: 'INVITACION',
-      nombre_completo: inv.nombre_completo,
-      email: inv.email,
+    if (
+      !existing ||
+      (existing.estatus !== 'PENDIENTE' && computedStatus === 'PENDIENTE')
+    ) {
+      byEmail.set(emailKey, {
+        id: inv.id,
+        tipo_registro: 'INVITACION',
+        nombre_completo: inv.nombre_completo,
+        email: inv.email,
+        rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
+        estatus: computedStatus,
+        auth_provider: 'INVITACION',
+        created_at: inv.created_at,
+        expira_en: inv.expira_en,
+      });
+    }
+  }
+
+  // 3. Usuarios inactivos en perfiles_usuarios (si no tienen invitación más reciente)
+  for (const p of perfilesRes.data ?? []) {
+    if (p.activo) continue;
+    const emailKey = p.email.trim().toLowerCase();
+    if (byEmail.has(emailKey)) continue;
+    const parsedRol = UserRoleSchema.safeParse(p.rol);
+    const provider: TenantUserRow['auth_provider'] =
+      p.auth_provider === 'EMAIL' || p.auth_provider === 'BOTH'
+        ? p.auth_provider
+        : 'GOOGLE';
+    byEmail.set(emailKey, {
+      id: p.id,
+      tipo_registro: 'USUARIO',
+      nombre_completo: p.nombre_completo,
+      email: p.email,
       rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
-      estatus: computedStatus,
-      auth_provider: 'INVITACION',
-      created_at: inv.created_at,
-      expira_en: inv.expira_en,
+      estatus: 'INACTIVO',
+      auth_provider: provider,
+      created_at: p.created_at,
+      expira_en: null,
     });
   }
+
+  const rows = Array.from(byEmail.values());
 
   const filtered = rows.filter((row) => {
     if (
@@ -120,10 +162,17 @@ export async function GET(request: Request): Promise<NextResponse> {
     return true;
   });
 
-  return NextResponse.json({
-    data: filtered,
-    total: filtered.length,
-  });
+  return NextResponse.json(
+    {
+      data: filtered,
+      total: filtered.length,
+    },
+    {
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    },
+  );
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -174,13 +223,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const tenantNombre = tenantRow?.nombre_comercial ?? 'Tu Empresa en SM Clock';
 
-  // Revocar invitaciones PENDIENTE previas para el mismo correo en este tenant
+  // Reemplazar invitaciones previas no aceptadas para el mismo correo en este tenant (evita duplicados)
   await admin
     .from('invitaciones_usuarios')
-    .update({ estatus: 'REVOCADA' })
+    .delete()
     .eq('tenant_id', tenantId)
     .ilike('email', parsed.data.email)
-    .eq('estatus', 'PENDIENTE');
+    .neq('estatus', 'ACEPTADA');
 
   const rawToken = randomBytes(32).toString('hex');
   const tokenHash = createHash('sha256').update(rawToken).digest('hex');

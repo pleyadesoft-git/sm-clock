@@ -83,13 +83,37 @@ def test_ui_diagnostic_endpoints_and_security(tmp_path: Path) -> None:
     assert resp_test.status_code == 200
     assert resp_test.json()["ok"] is True
 
-    # 5. Sincronizar lote
+    # 5. Sincronizar lote: sin autenticar debe rechazar con 401
+    resp_sync_unauth = client.post("/api/sync-now")
+    assert resp_sync_unauth.status_code == 401
+
+    # Iniciar sesión de admin con PIN de emergencia local
+    resp_login = client.post("/api/auth/login", json={"pin_emergencia": "123456"})
+    assert resp_login.status_code == 200
+    assert resp_login.json()["ok"] is True
+    assert resp_login.json()["usuario"]["rol"] == "SUPER_ADMIN"
+
+    # Verificar sesión activa en /api/auth/me
+    resp_me = client.get("/api/auth/me")
+    assert resp_me.status_code == 200
+    assert resp_me.json()["authenticated"] is True
+
+    # Ahora con sesión activa, la sincronización se procesa exitosamente
     resp_sync = client.post("/api/sync-now")
     assert resp_sync.status_code == 200
     assert resp_sync.json()["checadas_sincronizadas"] == 1
     assert db.count_pending() == 0
 
-    # 6. Descarga de layouts
+    # 6. Probar endpoints de diagnóstico Cloud
+    resp_cloud_latido = client.post("/api/cloud-test/latido")
+    assert resp_cloud_latido.status_code == 200
+    assert resp_cloud_latido.json()["ok"] is True
+
+    resp_cloud_checadas = client.post("/api/cloud-test/checadas")
+    assert resp_cloud_checadas.status_code == 200
+    assert resp_cloud_checadas.json()["ok"] is True
+
+    # 7. Descarga de layouts
     resp_contpaqi = client.get("/api/layouts/contpaqi")
     assert resp_contpaqi.status_code == 200
     assert "CodigoEmpleado,Fecha(YYYYMMDD),ClaveIncidencia,Cantidad" in resp_contpaqi.text
@@ -98,10 +122,23 @@ def test_ui_diagnostic_endpoints_and_security(tmp_path: Path) -> None:
     assert resp_tress.status_code == 200
     assert "NoEmpleado,Fecha(DD/MM/YYYY),Hora(HH:MM:SS),Terminal" in resp_tress.text
 
-    # 7. Bloqueo de IP no localhost
+    # 8. Cerrar sesión
+    resp_logout = client.post("/api/auth/logout")
+    assert resp_logout.status_code == 200
+    assert client.get("/api/auth/me").json()["authenticated"] is False
+
+    # 9. Bloqueo de IP no localhost
     remote_client = TestClient(app, client=("192.168.1.50", 54321))
     resp_blocked = remote_client.get("/api/status")
     assert resp_blocked.status_code == 403
     assert "Acceso prohibido" in resp_blocked.text
 
+    # 10. Ícono de la aplicación (/favicon.ico)
+    resp_fav = client.get("/favicon.ico")
+    assert resp_fav.status_code == 200
+    assert "image/x-icon" in resp_fav.headers.get("content-type", "")
+    assert len(resp_fav.content) > 0
+
     db.close()
+
+

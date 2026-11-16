@@ -149,6 +149,30 @@ export type AdminCreateEnrollmentCodeInput = z.infer<
   typeof AdminCreateEnrollmentCodeSchema
 >;
 
+export const AgentVerifyTechnicianRequestSchema = z.object({
+  email: z.string().trim().email('Ingresa un correo electrónico válido'),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  agente_id: z.uuid().optional(),
+});
+export type AgentVerifyTechnicianRequest = z.infer<
+  typeof AgentVerifyTechnicianRequestSchema
+>;
+
+export const AgentVerifyTechnicianResponseSchema = z.object({
+  ok: z.boolean(),
+  usuario: z.object({
+    id: z.uuid(),
+    email: z.string().email(),
+    nombre_completo: z.string().min(1),
+    rol: z.enum(['SUPER_ADMIN', 'ADMIN_EMPRESA']),
+    tenant_id: z.uuid().nullable().optional(),
+  }),
+});
+export type AgentVerifyTechnicianResponse = z.infer<
+  typeof AgentVerifyTechnicianResponseSchema
+>;
+
+
 function formatEpochInTimeZone(epochMs: number, timeZone: string): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,
@@ -258,6 +282,8 @@ export function getAgentContractsJsonSchema(): Record<string, unknown> {
       AgentChecadasBatchResponse: z.toJSONSchema(AgentChecadasBatchResponseSchema),
       AgentEmployeesSyncResponse: z.toJSONSchema(AgentEmployeesSyncResponseSchema),
       AgentSignedHeaders: z.toJSONSchema(AgentSignedHeadersSchema),
+      AgentVerifyTechnicianRequest: z.toJSONSchema(AgentVerifyTechnicianRequestSchema),
+      AgentVerifyTechnicianResponse: z.toJSONSchema(AgentVerifyTechnicianResponseSchema),
       ContpaqiLayoutConfig: z.toJSONSchema(ContpaqiLayoutConfigSchema),
       TressLayoutConfig: z.toJSONSchema(TressLayoutConfigSchema),
       Rh4000Config: z.toJSONSchema(Rh4000ConfigSchema),

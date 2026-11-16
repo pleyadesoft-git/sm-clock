@@ -249,14 +249,14 @@ isOneToOne: false
                   ]
                 },"perfiles_usuarios": {
                   Row: {
-                    "activo": boolean,"auth_provider": string,"created_at": string,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id": string | null,"ultimo_acceso_en": string | null,"updated_at": string
+                    "activo": boolean,"auth_provider": string,"created_at": string,"deleted_at": string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id": string | null,"ultimo_acceso_en": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
+                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"email"?: string,"id"?: string,"nombre_completo"?: string,"rol"?: string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
+                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email"?: string,"id"?: string,"nombre_completo"?: string,"rol"?: string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {

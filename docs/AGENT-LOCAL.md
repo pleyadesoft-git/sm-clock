@@ -49,13 +49,43 @@ Los formatos de CONTPAQi, TRESS y RH4000 son **configurables por tenant** y se v
 - SQL directo: usuario de **solo lectura** para catálogos; escritura solo como opción avanzada con aviso contractual.
 - RH4000 API: HTTPS, Bearer, timeouts, reintentos con idempotencia; registrar respuesta en `envios_destino`.
 
-## 8. UI local (diagnóstico)
-Login técnico contra la nube con respaldo offline (hash con Argon2). Pruebas de conexión (relojes, TA.Cloud, SQL, RH4000), visor de cola, vista y descarga de layouts de muestra, estado de sincronización. Sin CORS abierto, sin exponer en la red.
+## 8. UI local (diagnóstico en 127.0.0.1:8085)
+- **Autenticación Administrativa**:
+  - **En Línea**: Valida credenciales contra `POST /api/v1/agente/verificar-tecnico`. Permite acceso a usuarios con rol `SUPER_ADMIN` o `ADMIN_EMPRESA` (del tenant correspondiente al agente).
+  - **Offline**: PIN de emergencia local configurable en SQLite (por defecto `123456`) para cuando el sitio del cliente no dispone de internet y se requiere configurar la IP de los relojes.
+  - Emite cookie de sesión `sm_agent_session` (SameSite=Lax, HttpOnly, 12h).
+- **Funcionalidades en la UI**:
+  - **Pestaña 1: Resumen y Cola**: Monitor de checadas en tiempo real, estado de SQLite WAL, forzar sincronización manual de lotes pendientes y reconciliación de 30 min.
+  - **Pestaña 2: Relojes y Terminales**: CRUD completo de relojes (ZKTeco, Hikvision, TA.Cloud) con almacenamiento seguro de contraseñas (DPAPI / PBKDF2), edición de IP/puerto y prueba de conexión en vivo con medición de latencia en milisegundos.
+  - **Pestaña 3: Diagnóstico Cloud & APIs**:
+    1. *Probador de Latido*: Valida `POST /api/v1/agente/latido`, mide latencia en ms y alerta sobre desvíos de reloj (>120s).
+    2. *Probador de Checadas*: Envía lote de prueba firmado con HMAC-SHA256 para verificar la ingesta central.
+    3. *Probador de Catálogo de Empleados*: Sincroniza `cat_empleados` con `POST /api/v1/agente/sync-empleados`.
+    4. *Enrolamiento Central*: Canjea códigos de un solo uso `ENROL-XXXXXX-...`.
+  - **Pestaña 4: Layouts y Destinos**: Descarga inmediata de layouts oficiales para CONTPAQi (`MovimientosDyHporperiodo.cfg`) y Sistema TRESS (`tress_checadas.txt`).
 
-## 9. Empaquetado y actualización
-- Python 3.12, PyInstaller/Nuitka, servicio de Windows (NSSM o `pywin32`).
-- Instalador firmado; auto-actualización con verificación de firma y reversión si falla el latido.
-- Soporte Windows 10/11 y Server 2016+. Probar con antivirus comunes.
+## 9. Empaquetado a Ejecutable (.exe) y Servicio de Windows
+1. **Compilación en Windows**:
+   - Ejecuta `scripts\build-exe.bat` o:
+     ```cmd
+     cd agent
+     pyinstaller --clean -y agent.spec
+     ```
+   - El ejecutable independiente resultante se genera en `dist\sm-clock-agent.exe`.
+2. **Instalación como Servicio de Windows (Segundo Plano)**:
+   - Haz clic derecho en `scripts\install-service.bat` y selecciona **"Ejecutar como Administrador"** (o ejecuta `scripts\install-service.ps1`).
+   - El instalador configura el servicio de Windows `SMClockAgent` con inicio automático (`SERVICE_AUTO_START`), autoreinicio ante fallos y redirección de logs con rotación en `logs\agent.log`.
+3. **Desinstalación**:
+   - Ejecuta `scripts\uninstall-service.bat` como Administrador.
 
-## 10. Pruebas
-Simulador de reloj (servidor TCP falso), pruebas de cola ante cortes, pruebas de cambio de horario, pruebas de formato contra fixtures.
+## 10. Pruebas y Cobertura
+- Cobertura total de pruebas unitarias y de integración en `agent/tests/`:
+  - `test_agent.py`: Formatos de checadas, cambio de horario de Tijuana (PDT/PST, hora repetida de otoño `ambigua=True`), DPAPI/PBKDF2.
+  - `test_drivers_zkteco.py`, `test_drivers_hikvision.py`, `test_drivers_tacloud.py`: Decodificación y normalización de checadas desde fixtures reales.
+  - `test_targets.py`: Generación de layouts atómicos para CONTPAQi y TRESS.
+  - `test_sync_and_scheduler.py`: Firma HMAC-SHA256, anti-replay, deriva de reloj, aislamiento de fallos en scheduler.
+  - `test_ui.py`, `test_ui_relojes.py`, `test_ui_auth_and_cloud.py`: UI local, bloqueo a non-localhost, login de Super-Admin y Tenant Admin, PIN offline, CRUD de relojes y probadores de endpoints cloud.
+- Comando de verificación:
+  ```bash
+  cd agent && .venv/bin/pytest -v
+  ```

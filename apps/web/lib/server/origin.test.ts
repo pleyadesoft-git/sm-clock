@@ -35,11 +35,19 @@ describe('getRequestOrigin (Canonical public host resolution)', () => {
     expect(getRequestOrigin(req)).toBe('https://sm-clock.pleyadesoft.com');
   });
 
-  it('falls back to APP_DOMAIN env when request is from local reverse proxy without forwarded headers', () => {
+  it('falls back to APP_DOMAIN env when request is from container without forwarded headers', () => {
     process.env['APP_DOMAIN'] = 'sm-clock.pleyadesoft.com';
-    const req = new Request('http://localhost:3008/api/auth/callback');
+    const req = new Request('http://web:3000/api/auth/callback');
 
     expect(getRequestOrigin(req)).toBe('https://sm-clock.pleyadesoft.com');
+    delete process.env['APP_DOMAIN'];
+  });
+
+  it('keeps localhost origin when request is on localhost even if APP_DOMAIN is set', () => {
+    process.env['APP_DOMAIN'] = 'sm-clock.pleyadesoft.com';
+    const req = new Request('http://localhost:3000/api/auth/callback');
+
+    expect(getRequestOrigin(req)).toBe('http://localhost:3000');
     delete process.env['APP_DOMAIN'];
   });
 
