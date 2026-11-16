@@ -13,6 +13,7 @@ from ..config import protect_secret, unprotect_secret
 from ..db import AgentLocalDatabase, LocalClockRecord, QueuedPunch
 from ..drivers.base import BaseClockDriver
 from ..drivers.network import probe_device_connection
+from ..log_manager import GLOBAL_LOG_HANDLER
 from ..sync import CloudSyncClient, enroll_agent_with_code, verify_technician_credentials
 from ..targets.layouts import CONTPAQiLayoutGenerator, ContpaqiMovimiento, TRESSLayoutGenerator
 
@@ -216,6 +217,24 @@ def create_diagnostic_app(
                 for p in recent
             ],
         }
+
+    # --- Endpoints de Logs y Diagnóstico en Vivo ---
+
+    @app.get("/api/logs")
+    def api_get_logs(level: str | None = None, search: str | None = None, limit: int = 100) -> dict[str, Any]:
+        logs = GLOBAL_LOG_HANDLER.get_logs(level=level, search=search, limit=min(limit, 500))
+        counts = GLOBAL_LOG_HANDLER.get_counts()
+        return {
+            "ok": True,
+            "counts": counts,
+            "logs": logs,
+        }
+
+    @app.post("/api/logs/clear")
+    def api_clear_logs(request: Request) -> dict[str, Any]:
+        require_admin_auth(request)
+        GLOBAL_LOG_HANDLER.clear()
+        return {"ok": True, "mensaje": "Logs limpiados correctamente"}
 
     # --- Endpoints de Relojes Locales ---
 

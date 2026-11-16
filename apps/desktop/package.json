@@ -1,0 +1,45 @@
+{
+  "name": "@sm-clock/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/electron/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.electron.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^7.0.6",
+    "@radix-ui/react-label": "^2.1.17",
+    "@radix-ui/react-slot": "^1.5.0",
+    "@sm-clock/contracts": "workspace:*",
+    "@supabase/supabase-js": "2.119.0",
+    "@tanstack/react-query": "5.107.1",
+    "@tanstack/react-table": "9.3.1",
+    "clsx": "2.1.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "lucide-react": "1.72.0",
+    "motion": "14.13.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "^7.92.0",
+    "tailwind-merge": "3.7.0",
+    "write-excel-file": "^4.1.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^35.0.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "4.3.5",
+    "typescript": "5.9.3",
+    "vite": "^6.2.0"
+  }
+}

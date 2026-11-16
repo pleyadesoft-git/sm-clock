@@ -84,8 +84,25 @@ Los formatos de CONTPAQi, TRESS y RH4000 son **configurables por tenant** y se v
   - `test_drivers_zkteco.py`, `test_drivers_hikvision.py`, `test_drivers_tacloud.py`: Decodificación y normalización de checadas desde fixtures reales.
   - `test_targets.py`: Generación de layouts atómicos para CONTPAQi y TRESS.
   - `test_sync_and_scheduler.py`: Firma HMAC-SHA256, anti-replay, deriva de reloj, aislamiento de fallos en scheduler.
-  - `test_ui.py`, `test_ui_relojes.py`, `test_ui_auth_and_cloud.py`: UI local, bloqueo a non-localhost, login de Super-Admin y Tenant Admin, PIN offline, CRUD de relojes y probadores de endpoints cloud.
+  - `test_ui.py`, `test_ui_relojes.py`, `test_ui_auth_and_cloud.py`, `test_ui_logs.py`: UI local, bloqueo a non-localhost, login de Super-Admin y Tenant Admin, PIN offline, CRUD de relojes, probadores de endpoints cloud y logs en vivo.
 - Comando de verificación:
   ```bash
   cd agent && .venv/bin/pytest -v
   ```
+
+## 11. Aplicación de Escritorio en Electron (`apps/desktop`)
+- **Arquitectura**: Electron (Main + Preload + Renderer Vite/React 19 + Shadcn UI).
+- **Proceso Sidecar en Segundo Plano**: El proceso Main de Electron orquesta el binario Python (`sm-clock-agent run --no-browser --port 8085`), vigila su salud con autoreinicio automático y permanece minimizable en la bandeja del sistema (System Tray).
+- **Módulos en la Interfaz**:
+  1. **Autenticación**: Acceso con credenciales de Supabase Auth (Admin de Empresa o Super-Admin con selector de tenant) y acceso de emergencia por PIN offline.
+  2. **Terminales y Relojes**: `<DataTable>` TanStack Table de terminales ZKTeco, Hikvision y TA.Cloud, con drawer lateral con footer fijo (`RelojSheet`), prueba de conectividad en la LAN en tiempo real (latencia en ms) y sincronización bidireccional con Supabase (`fuentes_asistencia`).
+  3. **Monitor en Vivo**: Estado de SQLite WAL, cola de checadas en tiempo real y forzado de sincronización/reconciliación.
+  4. **Logs y Diagnósticos de Errores**: Consola de eventos en vivo, filtro por severidad (`ERROR`, `WARN`, `INFO`), búsqueda rápida, auto-scroll, copiado de logs y exportación de archivo de diagnóstico para soporte técnico.
+- **Comandos**:
+  ```bash
+  cd apps/desktop
+  pnpm dev       # Inicia el renderer Vite
+  pnpm build     # Compila el renderer y el proceso Electron
+  pnpm start     # Lanza la aplicación Electron
+  ```
+
