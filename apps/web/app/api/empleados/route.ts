@@ -253,18 +253,43 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   }
 
   const admin = createSupabaseAdminClient();
+  const updateData: {
+    sincronizado_en: string;
+    codigo_empleado?: string;
+    nombre_completo?: string;
+    credencial?: string | null;
+    departamento?: string | null;
+    puesto?: string | null;
+    sucursal_id?: string | null;
+    estatus_empleado?: string;
+  } = {
+    sincronizado_en: new Date().toISOString(),
+  };
+  if (parsed.data.codigo_empleado !== undefined) {
+    updateData.codigo_empleado = parsed.data.codigo_empleado;
+  }
+  if (parsed.data.nombre_completo !== undefined) {
+    updateData.nombre_completo = parsed.data.nombre_completo;
+  }
+  if (parsed.data.credencial !== undefined) {
+    updateData.credencial = parsed.data.credencial;
+  }
+  if (parsed.data.departamento !== undefined) {
+    updateData.departamento = parsed.data.departamento;
+  }
+  if (parsed.data.puesto !== undefined) {
+    updateData.puesto = parsed.data.puesto;
+  }
+  if (parsed.data.sucursal_id !== undefined) {
+    updateData.sucursal_id = parsed.data.sucursal_id;
+  }
+  if (parsed.data.estatus_empleado !== undefined) {
+    updateData.estatus_empleado = parsed.data.estatus_empleado;
+  }
+
   const { data: updated, error } = await admin
     .from('empleados')
-    .update({
-      codigo_empleado: parsed.data.codigo_empleado,
-      nombre_completo: parsed.data.nombre_completo,
-      credencial: parsed.data.credencial,
-      departamento: parsed.data.departamento,
-      puesto: parsed.data.puesto,
-      sucursal_id: parsed.data.sucursal_id,
-      estatus_empleado: parsed.data.estatus_empleado,
-      sincronizado_en: new Date().toISOString(),
-    })
+    .update(updateData)
     .eq('id', parsed.data.id)
     .eq('tenant_id', tenantId)
     .select('*')
