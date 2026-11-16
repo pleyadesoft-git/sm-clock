@@ -21,6 +21,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { Input } from '@/components/ui/input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Sheet } from '@/components/ui/sheet';
@@ -223,34 +224,34 @@ export default function AdminSuperAdminsPage() {
           }
 
           return (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                toggleMutation.mutate({ id: item.id, activo: !item.activo })
-              }
-              disabled={toggleMutation.isPending}
-              className="min-h-[var(--s-8)] px-[var(--s-3)] py-[var(--s-1)] text-xs"
-            >
-              {item.activo ? (
-                <>
-                  <Ban
-                    className="size-3.5"
-                    strokeWidth={1.75}
-                    aria-hidden="true"
-                  />
-                  <span>Revocar</span>
-                </>
-              ) : (
-                <>
-                  <UserCheck
-                    className="size-3.5"
-                    strokeWidth={1.75}
-                    aria-hidden="true"
-                  />
-                  <span>Reactivar</span>
-                </>
-              )}
-            </Button>
+            <div className="flex justify-end">
+              <TableActionsMenu
+                label={`Acciones para ${item.nombre_completo}`}
+                actions={[
+                  item.activo
+                    ? {
+                        id: 'revocar',
+                        label: 'Revocar acceso',
+                        icon: Ban,
+                        variant: 'danger',
+                        disabled: toggleMutation.isPending,
+                        onClick: () => {
+                          toggleMutation.mutate({ id: item.id, activo: false });
+                        },
+                      }
+                    : {
+                        id: 'reactivar',
+                        label: 'Reactivar acceso',
+                        icon: UserCheck,
+                        variant: 'success',
+                        disabled: toggleMutation.isPending,
+                        onClick: () => {
+                          toggleMutation.mutate({ id: item.id, activo: true });
+                        },
+                      },
+                ]}
+              />
+            </div>
           );
         },
       },

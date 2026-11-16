@@ -425,6 +425,7 @@ export function DataTable<TData extends RowData>({
                         key={header.id}
                         scope="col"
                         aria-sort={ariaSortValue}
+                        data-col-id={colId}
                       >
                         {header.isPlaceholder ? null : canSort ? (
                           <button
@@ -484,7 +485,11 @@ export function DataTable<TData extends RowData>({
                       );
                     }
                     return (
-                      <td key={cell.id} data-label={label}>
+                      <td
+                        key={cell.id}
+                        data-label={label}
+                        data-col-id={cell.column.id}
+                      >
                         <table.FlexRender cell={cell} />
                       </td>
                     );

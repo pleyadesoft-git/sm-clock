@@ -262,7 +262,7 @@ export async function getAuthenticatedContext(options?: {
 
     if (perfil) {
       const parsedRol = UserRoleSchema.safeParse(perfil.rol);
-      if (!perfil.activo || perfil.deleted_at !== null || !parsedRol.success) {
+      if (!perfil.activo || Boolean(perfil.deleted_at) || !parsedRol.success) {
         throw new AuthError(
           'Tu cuenta de usuario está desactivada o no tiene un rol válido en el tenant',
           403,

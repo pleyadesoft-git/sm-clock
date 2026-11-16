@@ -3,8 +3,10 @@
 import * as React from 'react';
 import {
   Camera,
+  Check,
   RotateCcw,
   RotateCw,
+  Trash2,
   Upload,
   VideoOff,
   ZoomIn,
@@ -23,12 +25,21 @@ import {
   type CropTransform,
 } from '@/lib/photo/canvas-export';
 
+export interface StagedPhotoPayload {
+  file: File;
+  previewUrl: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+}
+
 export interface PhotoUploaderProps {
-  empleadoId: string;
+  empleadoId?: string | null;
   nombreEmpleado: string;
   value?: string | null;
   maxSize?: number;
   aspect?: '1:1' | 'free';
+  onStagedChange?: (staged: StagedPhotoPayload | null) => void;
   onSaved?: (payload: {
     foto_path: string;
     foto_thumb_path: string;
@@ -43,11 +54,12 @@ function getInitials(name: string): string {
 }
 
 export function PhotoUploader({
-  empleadoId,
+  empleadoId = null,
   nombreEmpleado,
   value = null,
   maxSize = MAX_EXPORT_SIDE_PX,
   aspect: initialAspect = '1:1',
+  onStagedChange,
   onSaved,
 }: PhotoUploaderProps) {
   const { toast } = useToast();
@@ -57,6 +69,13 @@ export function PhotoUploader({
   const previewCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = React.useRef<MediaStream | null>(null);
+  const dragStateRef = React.useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origOffsetX: number;
+    origOffsetY: number;
+  } | null>(null);
 
   const [isDragging, setIsDragging] = React.useState(false);
   const [cameraActive, setCameraActive] = React.useState(false);
@@ -82,13 +101,25 @@ export function PhotoUploader({
 
   const [isSaving, setIsSaving] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [stagedInfo, setStagedInfo] =
+    React.useState<StagedPhotoPayload | null>(null);
   const [currentPreviewUrl, setCurrentPreviewUrl] = React.useState<
     string | null
   >(value);
 
   React.useEffect(() => {
-    setCurrentPreviewUrl(value);
-  }, [value]);
+    if (!stagedInfo) {
+      setCurrentPreviewUrl(value);
+    }
+  }, [value, stagedInfo]);
+
+  React.useEffect(() => {
+    return () => {
+      if (stagedInfo?.previewUrl) {
+        URL.revokeObjectURL(stagedInfo.previewUrl);
+      }
+    };
+  }, [stagedInfo]);
 
   const stopCameraTracks = React.useCallback(() => {
     if (mediaStreamRef.current) {
@@ -303,6 +334,12 @@ export function PhotoUploader({
     }
   }
 
+  function clearStagedPhoto() {
+    setStagedInfo(null);
+    setCurrentPreviewUrl(value);
+    onStagedChange?.(null);
+  }
+
   async function handleSavePhoto() {
     const canvas = previewCanvasRef.current;
     if (!canvas || !loadedImage) return;
@@ -318,6 +355,33 @@ export function PhotoUploader({
       const fileToSend = new File([blob], `empleado.${ext}`, {
         type: mimeType,
       });
+
+      if (!empleadoId) {
+        const previewUrl = URL.createObjectURL(fileToSend);
+        const staged: StagedPhotoPayload = {
+          file: fileToSend,
+          previewUrl,
+          width: canvas.width,
+          height: canvas.height,
+          sizeBytes: fileToSend.size,
+        };
+        setStagedInfo(staged);
+        setCurrentPreviewUrl(previewUrl);
+        onStagedChange?.(staged);
+
+        if ('close' in loadedImage) {
+          loadedImage.close();
+        }
+        setLoadedImage(null);
+        setSourceSize(null);
+
+        toast({
+          title: 'Fotografía lista',
+          description: `Recortada a ${canvas.width}×${canvas.height} px. Se subirá al crear el empleado.`,
+          variant: 'success',
+        });
+        return;
+      }
 
       const formData = new FormData();
       formData.append('file', fileToSend);
@@ -345,7 +409,7 @@ export function PhotoUploader({
         setCurrentPreviewUrl(json.signed_url);
       }
 
-      if (loadedImage && 'close' in loadedImage) {
+      if ('close' in loadedImage) {
         loadedImage.close();
       }
       setLoadedImage(null);
@@ -365,7 +429,7 @@ export function PhotoUploader({
         signed_thumb_url: json.signed_thumb_url ?? null,
       });
     } catch {
-      setErrorMsg('Error de red al subir la fotografía.');
+      setErrorMsg('Error al procesar o subir la fotografía.');
     } finally {
       setIsSaving(false);
     }
@@ -400,29 +464,51 @@ export function PhotoUploader({
       onKeyDown={handleKeyDownEditor}
     >
       {/* Cabecera con avatar actual */}
-      <div className="flex items-center gap-[var(--s-3)]">
-        {currentPreviewUrl ? (
-          <img
-            src={currentPreviewUrl}
-            alt={`Fotografía de ${nombreEmpleado}`}
-            className="size-14 shrink-0 rounded-full border border-[var(--separator)] object-cover"
-          />
-        ) : (
-          <div
-            aria-label={`Iniciales de ${nombreEmpleado}`}
-            className="flex size-14 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] font-semibold text-[var(--primary)]"
-          >
-            {getInitials(nombreEmpleado)}
+      <div className="flex items-center justify-between gap-[var(--s-3)]">
+        <div className="flex items-center gap-[var(--s-3)]">
+          {currentPreviewUrl ? (
+            <img
+              src={currentPreviewUrl}
+              alt={`Fotografía de ${nombreEmpleado}`}
+              className="size-14 shrink-0 rounded-full border border-[var(--separator)] object-cover"
+            />
+          ) : (
+            <div
+              aria-label={`Iniciales de ${nombreEmpleado}`}
+              className="flex size-14 shrink-0 items-center justify-center rounded-full bg-[var(--primary-soft)] font-semibold text-[var(--primary)]"
+            >
+              {getInitials(nombreEmpleado)}
+            </div>
+          )}
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-[var(--text)]">
+              Fotografía del trabajador
+            </span>
+            <span className="text-xs text-[var(--text-2)]">
+              Máximo 720 px por lado · Almacenamiento privado sin EXIF
+            </span>
+            {stagedInfo && !loadedImage ? (
+              <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full bg-[var(--success-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--success)]">
+                <Check className="size-3" aria-hidden="true" />
+                Lista · {stagedInfo.width}×{stagedInfo.height} px ·{' '}
+                {Math.max(1, Math.round(stagedInfo.sizeBytes / 1024))} KB
+              </span>
+            ) : null}
           </div>
-        )}
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold text-[var(--text)]">
-            Fotografía del trabajador
-          </span>
-          <span className="text-xs text-[var(--text-2)]">
-            Máximo 720 px por lado · Almacenamiento privado sin EXIF
-          </span>
         </div>
+
+        {stagedInfo && !loadedImage ? (
+          <Button
+            type="button"
+            variant="plain"
+            onClick={clearStagedPhoto}
+            aria-label="Quitar fotografía seleccionada"
+            className="text-xs text-[var(--danger)]"
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            <span>Quitar</span>
+          </Button>
+        ) : null}
       </div>
 
       {/* Inputs ocultos de archivo y captura nativa móvil */}
@@ -584,12 +670,56 @@ export function PhotoUploader({
             />
           </div>
 
-          <div className="flex items-center justify-center overflow-hidden rounded-[var(--r-md)] bg-[var(--bg-elevated)] p-[var(--s-3)]">
+          <div className="flex flex-col items-center justify-center gap-[var(--s-1)] overflow-hidden rounded-[var(--r-md)] bg-[var(--bg-elevated)] p-[var(--s-3)]">
             <canvas
               ref={previewCanvasRef}
               aria-label="Vista previa de recorte y rotación de la fotografía"
-              className="max-h-64 max-w-full rounded-[var(--r-sm)] border border-[var(--separator)] shadow-[var(--shadow-1)]"
+              className="max-h-64 max-w-full cursor-grab touch-none rounded-[var(--r-sm)] border border-[var(--separator)] shadow-[var(--shadow-1)] active:cursor-grabbing"
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                dragStateRef.current = {
+                  pointerId: e.pointerId,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origOffsetX: transform.offsetX,
+                  origOffsetY: transform.offsetY,
+                };
+              }}
+              onPointerMove={(e) => {
+                const drag = dragStateRef.current;
+                if (!drag || drag.pointerId !== e.pointerId) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                const dx = ((e.clientX - drag.startX) / rect.width) * 2;
+                const dy = ((e.clientY - drag.startY) / rect.height) * 2;
+                setTransform((prev) => ({
+                  ...prev,
+                  offsetX: clampOffset(drag.origOffsetX + dx),
+                  offsetY: clampOffset(drag.origOffsetY + dy),
+                }));
+              }}
+              onPointerUp={(e) => {
+                if (dragStateRef.current?.pointerId === e.pointerId) {
+                  dragStateRef.current = null;
+                }
+              }}
+              onPointerCancel={(e) => {
+                if (dragStateRef.current?.pointerId === e.pointerId) {
+                  dragStateRef.current = null;
+                }
+              }}
+              onWheel={(e) => {
+                e.preventDefault();
+                const delta = e.deltaY < 0 ? 0.1 : -0.1;
+                setTransform((prev) => ({
+                  ...prev,
+                  zoom: Math.min(3, Math.max(1, Number((prev.zoom + delta).toFixed(2)))),
+                }));
+              }}
             />
+            <span className="text-[11px] text-[var(--text-2)]">
+              Arrastra sobre la imagen para encuadrar · Usa la rueda o deslizadores para zoom
+            </span>
           </div>
 
           {/* Botones de giro de 90° */}
@@ -758,7 +888,16 @@ export function PhotoUploader({
               disabled={isSaving}
               onClick={() => void handleSavePhoto()}
             >
-              {isSaving ? 'Guardando foto…' : 'Guardar foto'}
+              <Check className="size-4" aria-hidden="true" />
+              <span>
+                {isSaving
+                  ? empleadoId
+                    ? 'Guardando foto…'
+                    : 'Procesando imagen…'
+                  : empleadoId
+                    ? 'Confirmar y guardar foto'
+                    : `Confirmar imagen (≤ ${maxSize} px)`}
+              </span>
             </Button>
           </div>
         </div>

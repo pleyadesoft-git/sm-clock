@@ -109,7 +109,7 @@ export function ErrorDialog({ open, onOpenChange, error }: ErrorDialogProps) {
     <dialog
       ref={dialogRef}
       aria-labelledby={titleId}
-      className="fixed inset-0 z-50 m-auto flex max-h-[85vh] w-[min(92vw,560px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+      className="fixed inset-0 z-50 m-auto hidden max-h-[85vh] w-[min(92vw,560px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm open:flex"
       {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
     >
       {/* Header del diálogo */}

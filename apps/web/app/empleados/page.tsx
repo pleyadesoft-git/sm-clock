@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Pencil, Plus, Users } from 'lucide-react';
+import { Pencil, Plus, Users } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -21,7 +21,10 @@ import type { z } from 'zod';
 
 type EmpleadoFormInput = z.input<typeof EmpleadoCreateSchema>;
 type EmpleadoFormOutput = z.output<typeof EmpleadoCreateSchema>;
-import { PhotoUploader } from '@/components/features/empleados/photo-uploader';
+import {
+  PhotoUploader,
+  type StagedPhotoPayload,
+} from '@/components/features/empleados/photo-uploader';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +32,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
 import { useToast } from '@/components/ui/toast';
@@ -133,9 +137,12 @@ export default function EmpleadosPage() {
   });
 
   const sucursales = data?.sucursales ?? [];
+  const [stagedPhoto, setStagedPhoto] =
+    React.useState<StagedPhotoPayload | null>(null);
 
   function openNewSheet() {
     setEditing(null);
+    setStagedPhoto(null);
     form.reset({
       codigo_empleado: '',
       nombre_completo: '',
@@ -150,6 +157,7 @@ export default function EmpleadosPage() {
 
   function openEditSheet(row: EmpleadoRow) {
     setEditing(row);
+    setStagedPhoto(null);
     form.reset({
       codigo_empleado: row.codigo_empleado,
       nombre_completo: row.nombre_completo,
@@ -206,6 +214,41 @@ export default function EmpleadosPage() {
           title: 'Error al guardar empleado',
           description: json.error ?? 'Verifica los datos ingresados.',
           variant: 'danger',
+        });
+        return;
+      }
+
+      if (!editing && stagedPhoto) {
+        const photoForm = new FormData();
+        photoForm.append('file', stagedPhoto.file);
+        const photoRes = await fetch(`/api/empleados/${json.data.id}/foto`, {
+          method: 'POST',
+          body: photoForm,
+        });
+
+        await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
+
+        if (!photoRes.ok) {
+          const photoErr = (await photoRes.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          setEditing(json.data);
+          toast({
+            title: 'Empleado creado, pero falló la subida de foto',
+            description:
+              photoErr.error ??
+              'Puedes reintentar subir la fotografía desde este panel.',
+            variant: 'danger',
+          });
+          return;
+        }
+
+        setStagedPhoto(null);
+        setSheetOpen(false);
+        toast({
+          title: 'Empleado y fotografía registrados',
+          description: 'La foto se guardó optimizada a ≤ 720 px.',
+          variant: 'success',
         });
         return;
       }
@@ -322,15 +365,18 @@ export default function EmpleadosPage() {
         header: 'Acciones',
         enableSorting: false,
         cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-[var(--s-2)]">
-            <Button
-              variant="secondary"
-              onClick={() => openEditSheet(row.original)}
-            >
-              <Camera className="size-3.5" aria-hidden="true" />
-              <Pencil className="size-3.5" aria-hidden="true" />
-              Editar / Foto
-            </Button>
+          <div className="flex justify-end">
+            <TableActionsMenu
+              label={`Acciones para ${row.original.nombre_completo}`}
+              actions={[
+                {
+                  id: 'editar',
+                  label: 'Editar / Foto',
+                  icon: Pencil,
+                  onClick: () => openEditSheet(row.original),
+                },
+              ]}
+            />
           </div>
         ),
       },
@@ -619,19 +665,26 @@ export default function EmpleadosPage() {
             </form>
           </Form>
 
-          {/* Componente PhotoUploader disponible en cuanto el empleado tiene ID */}
-          {editing && (
-            <PhotoUploader
-              empleadoId={editing.id}
-              nombreEmpleado={editing.nombre_completo}
-              value={editing.foto_signed_url ?? editing.foto_thumb_signed_url}
-              onSaved={() => {
-                void queryClient.invalidateQueries({
-                  queryKey: ['empleados-list'],
-                });
-              }}
-            />
-          )}
+          {/* Componente PhotoUploader disponible tanto al crear como al editar */}
+          <PhotoUploader
+            key={editing?.id ?? 'new-empleado'}
+            empleadoId={editing?.id ?? null}
+            nombreEmpleado={
+              editing?.nombre_completo ??
+              (form.watch('nombre_completo') || 'Nuevo empleado')
+            }
+            value={
+              editing
+                ? (editing.foto_signed_url ?? editing.foto_thumb_signed_url)
+                : null
+            }
+            onStagedChange={setStagedPhoto}
+            onSaved={() => {
+              void queryClient.invalidateQueries({
+                queryKey: ['empleados-list'],
+              });
+            }}
+          />
         </div>
       </Sheet>
     </AppShell>

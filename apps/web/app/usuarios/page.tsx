@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   Copy,
   MailPlus,
-  MoreVertical,
   Pencil,
   Shield,
   Trash2,
@@ -42,6 +41,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { Input } from '@/components/ui/input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Sheet } from '@/components/ui/sheet';
@@ -207,35 +207,10 @@ export default function UsuariosPage() {
     }
   }
 
-  const [menuState, setMenuState] = React.useState<{
-    item: TenantUserRow;
-    top: number;
-    right: number;
-  } | null>(null);
   const [deletingTarget, setDeletingTarget] =
     React.useState<TenantUserRow | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const deleteDialogRef = React.useRef<HTMLDialogElement | null>(null);
-
-  React.useEffect(() => {
-    if (!menuState) return;
-
-    const closeMenu = () => setMenuState(null);
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setMenuState(null);
-      }
-    };
-
-    window.addEventListener('click', closeMenu);
-    window.addEventListener('scroll', closeMenu, true);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('click', closeMenu);
-      window.removeEventListener('scroll', closeMenu, true);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [menuState]);
 
   React.useEffect(() => {
     const dialog = deleteDialogRef.current;
@@ -378,38 +353,40 @@ export default function UsuariosPage() {
         enableSorting: false,
         cell: ({ row }) => {
           const item = row.original;
-          const isOpen = menuState?.item.id === item.id;
           return (
             <div className="flex justify-end">
-              <Button
-                type="button"
-                variant="plain"
-                aria-label={`Acciones para ${item.nombre_completo}`}
-                aria-haspopup="menu"
-                aria-expanded={isOpen}
-                className="size-8 p-0"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  if (isOpen) {
-                    setMenuState(null);
-                    return;
-                  }
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  setMenuState({
-                    item,
-                    top: rect.bottom + 4,
-                    right: Math.max(8, window.innerWidth - rect.right),
-                  });
-                }}
-              >
-                <MoreVertical className="size-4" aria-hidden="true" />
-              </Button>
+              <TableActionsMenu
+                label={`Acciones para ${item.nombre_completo}`}
+                actions={[
+                  ...(item.tipo_registro === 'USUARIO'
+                    ? [
+                        {
+                          id: 'editar',
+                          label: 'Editar',
+                          icon: Pencil,
+                          onClick: () => {
+                            openEditUserSheet(item);
+                          },
+                        },
+                      ]
+                    : []),
+                  {
+                    id: 'borrar',
+                    label: 'Borrar',
+                    icon: Trash2,
+                    variant: 'danger' as const,
+                    onClick: () => {
+                      setDeletingTarget(item);
+                    },
+                  },
+                ]}
+              />
             </div>
           );
         },
       },
     ],
-    [menuState?.item.id],
+    [],
   );
 
   const exportColumns = React.useMemo<ExportColumn<TenantUserRow>[]>(
@@ -740,52 +717,12 @@ export default function UsuariosPage() {
         </form>
       </Sheet>
 
-      {/* Menú contextual de acciones por fila */}
-      {menuState ? (
-        <div
-          role="menu"
-          aria-label={`Acciones para ${menuState.item.nombre_completo}`}
-          style={{ top: menuState.top, right: menuState.right }}
-          className="fixed z-50 flex min-w-[176px] flex-col rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-1)] shadow-[var(--shadow-2)]"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {menuState.item.tipo_registro === 'USUARIO' ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-[var(--s-2)] rounded-[var(--r-sm)] px-[var(--s-3)] py-[var(--s-2)] text-left text-sm font-medium text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
-              onClick={() => {
-                const target = menuState.item;
-                setMenuState(null);
-                openEditUserSheet(target);
-              }}
-            >
-              <Pencil className="size-4 text-[var(--text-2)]" aria-hidden="true" />
-              <span>Editar</span>
-            </button>
-          ) : null}
-
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-[var(--s-2)] rounded-[var(--r-sm)] px-[var(--s-3)] py-[var(--s-2)] text-left text-sm font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger-bg)]"
-            onClick={() => {
-              const target = menuState.item;
-              setMenuState(null);
-              setDeletingTarget(target);
-            }}
-          >
-            <Trash2 className="size-4" aria-hidden="true" />
-            <span>Borrar</span>
-          </button>
-        </div>
-      ) : null}
-
       {/* Confirmation dialog para confirmar borrado */}
       <dialog
         ref={deleteDialogRef}
         aria-labelledby="delete-user-dialog-title"
-        className="fixed inset-0 z-50 m-auto flex max-h-[85vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+        className="fixed inset-0 z-50 m-auto hidden max-h-[85vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm open:flex"
+        {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
       >
         <div className="flex items-center justify-between border-b border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-5)] py-[var(--s-4)] backdrop-blur-[var(--blur)]">
           <div className="flex items-center gap-[var(--s-2)]">

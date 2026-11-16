@@ -303,6 +303,10 @@ textarea[aria-invalid="true"]:focus-visible {
 }
 
 /* Native <dialog> Sheet & Modal rules (modern-web-guidance: dialog & light-dismiss-a-dialog) */
+dialog:not([open]) {
+  display: none !important;
+}
+
 dialog:modal {
   overscroll-behavior: contain;
 }
@@ -484,6 +488,25 @@ dialog.ios-sheet[open] {
   background-color: var(--surface);
   color: var(--text);
   font-weight: 600;
+}
+
+.ios-table th[data-col-id="acciones"],
+.ios-table td[data-col-id="acciones"] {
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 1;
+  background-color: var(--surface);
+  text-align: end;
+}
+
+.ios-table thead th[data-col-id="acciones"] {
+  z-index: 3;
+  background-color: var(--surface-translucent);
+  backdrop-filter: var(--blur);
+}
+
+.ios-table tbody tr:hover td[data-col-id="acciones"] {
+  background-color: var(--surface-2);
 }
 
 @container (width < 640px) {

@@ -28,6 +28,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
 import { useToast } from '@/components/ui/toast';
@@ -208,13 +209,17 @@ export default function SucursalesPage() {
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex justify-end">
-            <Button
-              variant="secondary"
-              onClick={() => openEditSheet(row.original)}
-            >
-              <Pencil className="size-3.5" aria-hidden="true" />
-              Editar
-            </Button>
+            <TableActionsMenu
+              label={`Acciones para ${row.original.nombre}`}
+              actions={[
+                {
+                  id: 'editar',
+                  label: 'Editar',
+                  icon: Pencil,
+                  onClick: () => openEditSheet(row.original),
+                },
+              ]}
+            />
           </div>
         ),
       },

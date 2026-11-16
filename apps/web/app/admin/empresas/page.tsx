@@ -2,7 +2,16 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Pencil, Plus, ShieldCheck } from 'lucide-react';
+import {
+  AlertTriangle,
+  Ban,
+  Building2,
+  CheckCircle2,
+  Pencil,
+  Plus,
+  ShieldCheck,
+  X,
+} from 'lucide-react';
 import {
   PlanCodigoSchema,
   TenantStatusSchema,
@@ -18,6 +27,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { useToast } from '@/components/ui/toast';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatFechaHoraMx } from '@/lib/utils';
@@ -44,6 +54,10 @@ function getStatusBadgeVariant(rawStatus: string): BadgeVariant {
   return parsed.success ? STATUS_BADGE_MAP[parsed.data] : 'default';
 }
 
+function isTenantDisabled(estatus: string): boolean {
+  return estatus === 'SUSPENDIDO' || estatus === 'CANCELADO';
+}
+
 export default function AdminEmpresasPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -62,6 +76,129 @@ export default function AdminEmpresasPage() {
   const [editingTenant, setEditingTenant] = React.useState<TenantRow | null>(
     null,
   );
+  const [disablingTarget, setDisablingTarget] =
+    React.useState<TenantRow | null>(null);
+  const [togglingStatus, setTogglingStatus] = React.useState(false);
+  const disableDialogRef = React.useRef<HTMLDialogElement | null>(null);
+
+  React.useEffect(() => {
+    const dialog = disableDialogRef.current;
+    if (!dialog) return;
+
+    if (disablingTarget && !dialog.open) {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
+    } else if (!disablingTarget && dialog.open) {
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
+    }
+  }, [disablingTarget]);
+
+  React.useEffect(() => {
+    const dialog = disableDialogRef.current;
+    if (!dialog) return;
+
+    const handleClose = () => {
+      if (!togglingStatus) {
+        setDisablingTarget(null);
+      }
+    };
+
+    dialog.addEventListener('close', handleClose);
+
+    let cleanupFallback: (() => void) | undefined;
+    if (
+      typeof HTMLDialogElement !== 'undefined' &&
+      !('closedBy' in HTMLDialogElement.prototype)
+    ) {
+      const isOutside = (event: PointerEvent) => {
+        const rect = dialog.getBoundingClientRect();
+        return (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        );
+      };
+      let pressedOutside = false;
+      const handlePointerDown = (event: PointerEvent) => {
+        pressedOutside = isOutside(event);
+      };
+      const handlePointerUp = (event: PointerEvent) => {
+        if (pressedOutside && isOutside(event) && !togglingStatus) {
+          dialog.close();
+        }
+      };
+      dialog.addEventListener('pointerdown', handlePointerDown);
+      dialog.addEventListener('pointerup', handlePointerUp);
+      cleanupFallback = () => {
+        dialog.removeEventListener('pointerdown', handlePointerDown);
+        dialog.removeEventListener('pointerup', handlePointerUp);
+      };
+    }
+
+    return () => {
+      dialog.removeEventListener('close', handleClose);
+      cleanupFallback?.();
+    };
+  }, [togglingStatus]);
+
+  async function handleUpdateTenantStatus(
+    tenant: TenantRow,
+    nextStatus: 'ACTIVO' | 'SUSPENDIDO',
+  ) {
+    if (togglingStatus) return;
+    setTogglingStatus(true);
+    try {
+      const res = await fetch(`/api/admin/tenants/${tenant.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estatus: nextStatus }),
+      });
+
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({
+          title:
+            nextStatus === 'SUSPENDIDO'
+              ? 'No se pudo inhabilitar la empresa'
+              : 'No se pudo habilitar la empresa',
+          description:
+            body.error ?? 'Ocurrió un error al actualizar el estatus.',
+          variant: 'danger',
+        });
+        return;
+      }
+
+      setDisablingTarget(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+      toast({
+        title:
+          nextStatus === 'SUSPENDIDO'
+            ? 'Empresa inhabilitada'
+            : 'Empresa habilitada',
+        description:
+          nextStatus === 'SUSPENDIDO'
+            ? `${tenant.nombre_comercial} pasó a estatus Suspendido.`
+            : `${tenant.nombre_comercial} ahora está activa.`,
+        variant: 'success',
+      });
+    } catch {
+      toast({
+        title: 'Error de conexión',
+        description: 'No se pudo comunicar con el servidor.',
+        variant: 'danger',
+      });
+    } finally {
+      setTogglingStatus(false);
+    }
+  }
 
   const queryParams = React.useMemo(() => {
     const sp = new URLSearchParams({
@@ -250,22 +387,52 @@ export default function AdminEmpresasPage() {
         id: 'acciones',
         header: 'Acciones',
         enableSorting: false,
-        cell: ({ row }) => (
-          <Button
-            variant="plain"
-            onClick={() => {
-              setEditingTenant(row.original);
-              setSheetOpen(true);
-            }}
-            aria-label={`Editar ${row.original.nombre_comercial}`}
-          >
-            <Pencil className="size-4" strokeWidth={1.75} aria-hidden="true" />
-            <span>Editar</span>
-          </Button>
-        ),
+        cell: ({ row }) => {
+          const item = row.original;
+          const isDisabled = isTenantDisabled(item.estatus);
+          return (
+            <div className="flex justify-end">
+              <TableActionsMenu
+                label={`Acciones para ${item.nombre_comercial}`}
+                actions={[
+                  {
+                    id: 'editar',
+                    label: 'Editar',
+                    icon: Pencil,
+                    onClick: () => {
+                      setEditingTenant(item);
+                      setSheetOpen(true);
+                    },
+                  },
+                  isDisabled
+                    ? {
+                        id: 'habilitar',
+                        label: 'Habilitar',
+                        icon: CheckCircle2,
+                        variant: 'success',
+                        disabled: togglingStatus,
+                        onClick: () => {
+                          void handleUpdateTenantStatus(item, 'ACTIVO');
+                        },
+                      }
+                    : {
+                        id: 'inhabilitar',
+                        label: 'Inhabilitar',
+                        icon: Ban,
+                        variant: 'danger',
+                        disabled: togglingStatus,
+                        onClick: () => {
+                          setDisablingTarget(item);
+                        },
+                      },
+                ]}
+              />
+            </div>
+          );
+        },
       },
     ],
-    [],
+    [togglingStatus],
   );
 
   const exportColumns = React.useMemo(
@@ -422,6 +589,76 @@ export default function AdminEmpresasPage() {
           });
         }}
       />
+
+      {/* Diálogo de confirmación para inhabilitar empresa */}
+      <dialog
+        ref={disableDialogRef}
+        aria-labelledby="disable-tenant-dialog-title"
+        className="fixed inset-0 z-50 m-auto hidden max-h-[85vh] w-[min(92vw,460px)] flex-col overflow-hidden rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-[var(--shadow-2)] backdrop:bg-black/50 backdrop:backdrop-blur-sm open:flex"
+        {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
+      >
+        <div className="flex items-center justify-between border-b border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-5)] py-[var(--s-4)] backdrop-blur-[var(--blur)]">
+          <div className="flex items-center gap-[var(--s-2)]">
+            <div className="flex size-8 items-center justify-center rounded-full bg-[var(--danger-bg)] text-[var(--danger)]">
+              <AlertTriangle className="size-4" strokeWidth={2} aria-hidden="true" />
+            </div>
+            <h2
+              id="disable-tenant-dialog-title"
+              className="text-base font-semibold text-[var(--text)]"
+            >
+              Confirmar inhabilitación de empresa
+            </h2>
+          </div>
+          <Button
+            type="button"
+            variant="plain"
+            aria-label="Cerrar confirmación de inhabilitación"
+            onClick={() => setDisablingTarget(null)}
+            disabled={togglingStatus}
+            className="size-8 p-0"
+          >
+            <X className="size-4" strokeWidth={1.75} aria-hidden="true" />
+          </Button>
+        </div>
+
+        <div className="ios-sheet-body flex-1 overflow-y-auto px-[var(--s-5)] py-[var(--s-4)]">
+          <p className="text-sm leading-relaxed text-[var(--text)]">
+            ¿Estás seguro de que deseas inhabilitar la empresa{' '}
+            <span className="font-semibold">
+              {disablingTarget?.nombre_comercial}
+            </span>{' '}
+            (<code className="font-mono text-xs">{disablingTarget?.tenant_code}</code>
+            )? Pasará a estatus <span className="font-semibold">Suspendido</span>{' '}
+            y sus usuarios no podrán acceder hasta que sea habilitada nuevamente.
+          </p>
+        </div>
+
+        <div className="ios-sheet-footer flex items-center justify-end gap-[var(--s-2)] border-t border-[var(--separator)] bg-[var(--surface-translucent)] px-[var(--s-5)] py-[var(--s-3)] backdrop-blur-[var(--blur)]">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setDisablingTarget(null)}
+            disabled={togglingStatus}
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => {
+              if (disablingTarget) {
+                void handleUpdateTenantStatus(disablingTarget, 'SUSPENDIDO');
+              }
+            }}
+            disabled={togglingStatus}
+          >
+            <Ban className="size-4" aria-hidden="true" />
+            <span>
+              {togglingStatus ? 'Inhabilitando…' : 'Confirmar inhabilitación'}
+            </span>
+          </Button>
+        </div>
+      </dialog>
     </AppShell>
   );
 }

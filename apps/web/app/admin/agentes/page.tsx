@@ -10,6 +10,7 @@ import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
+import { TableActionsMenu } from '@/components/ui/table-actions-menu';
 import { Sheet } from '@/components/ui/sheet';
 import { useToast } from '@/components/ui/toast';
 import type { ExportColumn } from '@/lib/export/exporters';
@@ -228,19 +229,30 @@ export default function AdminAgentesPage() {
         id: 'acciones',
         header: 'Acciones',
         enableSorting: false,
-        cell: ({ row }) => (
-          <div className="flex items-center justify-end gap-[var(--s-2)]">
-            {!row.original.revocado_en && (
-              <Button
-                variant="secondary"
-                onClick={() => void handleRevoke(row.original)}
-              >
-                <ShieldOff className="h-3.5 w-3.5 text-[var(--danger)]" />
-                Revocar
-              </Button>
-            )}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const item = row.original;
+          const isRevoked = Boolean(item.revocado_en);
+          return (
+            <div className="flex justify-end">
+              <TableActionsMenu
+                label={`Acciones para agente ${item.nombre}`}
+                actions={
+                  isRevoked
+                    ? []
+                    : [
+                        {
+                          id: 'revocar',
+                          label: 'Revocar',
+                          icon: ShieldOff,
+                          variant: 'danger',
+                          onClick: () => void handleRevoke(item),
+                        },
+                      ]
+                }
+              />
+            </div>
+          );
+        },
       },
     ],
     [],
