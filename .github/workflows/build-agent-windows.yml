@@ -7,6 +7,8 @@ on:
       - 'agent/**'
       - '.github/workflows/build-agent-windows.yml'
       - 'packages/contracts/**'
+    tags:
+      - 'v*'
   pull_request:
     branches: [main, develop]
     paths:
@@ -15,9 +17,12 @@ on:
       - 'packages/contracts/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
-    name: Build & Test sm-clock-agent.exe (Windows)
+    name: Build & Release sm-clock-agent.exe (Windows)
     runs-on: windows-latest
 
     steps:
@@ -56,12 +61,34 @@ jobs:
       - name: Prepare distribution bundle
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path ./release-bundle -Force
-          Copy-Item ./agent/dist/sm-clock-agent.exe ./release-bundle/
-          Copy-Item ./agent/scripts/install-service.bat ./release-bundle/
-          Copy-Item ./agent/scripts/install-service.ps1 ./release-bundle/
-          Copy-Item ./agent/scripts/uninstall-service.bat ./release-bundle/
-          Copy-Item ./agent/icon.ico ./release-bundle/
+          $bundleDir = "./release-bundle/sm-clock-agent-windows-x64"
+          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+          
+          Copy-Item ./agent/dist/sm-clock-agent.exe $bundleDir/
+          Copy-Item ./agent/scripts/install-service.bat $bundleDir/
+          Copy-Item ./agent/scripts/install-service.ps1 $bundleDir/
+          Copy-Item ./agent/scripts/uninstall-service.bat $bundleDir/
+          Copy-Item ./agent/icon.ico $bundleDir/
+
+          $readmeText = @"
+          ========================================================
+            SM-CLOCK AGENTE LOCAL DE ASISTENCIA (TIJUANA, B.C.)
+          ========================================================
+          Instrucciones de Instalacion Rapida:
+
+          1. Coloca esta carpeta en una ubicacion permanente del equipo (ej. C:\SM-Clock-Agent).
+          2. Haz clic derecho sobre 'install-service.bat' y selecciona:
+             'Ejecutar como Administrador'.
+          3. El agente se registrara e iniciara automaticamente en segundo plano como Servicio de Windows.
+          4. Abre tu navegador web en:
+             http://127.0.0.1:8085
+          5. Inicia sesion con tus credenciales de Super-Admin o Admin del Tenant (o con el PIN de emergencia 123456).
+          6. Configura la IP y puerto de tus relojes checadores (ZKTeco o Hikvision) y realiza la prueba de conexion.
+          "@
+          Set-Content -Path "$bundleDir/LEEME_INSTALACION.txt" -Value $readmeText -Encoding UTF8
+
+          # Crear archivo ZIP listo para descarga directa
+          Compress-Archive -Path "$bundleDir/*" -DestinationPath "./release-bundle/sm-clock-agent-windows-x64.zip" -Force
 
       - name: Upload Windows Agent Artifact
         uses: actions/upload-artifact@v4
@@ -70,3 +97,29 @@ jobs:
           path: ./release-bundle/
           retention-days: 30
           if-no-files-found: error
+
+      - name: Publish GitHub Release (Latest & Tags)
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Agente Local Windows (Última Versión)' }}
+          body: |
+            ## SM-Clock Agente Local para Windows (x64)
+            Agente en segundo plano para captura de checadas de relojes ZKTeco y Hikvision (Tijuana, B.C.).
+
+            ### Enlaces de descarga directa:
+            - 📦 [**Descargar Paquete Completo (.zip)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent-windows-x64.zip) — Incluye instalador automático como servicio de Windows.
+            - ⚡ [**Descargar Ejecutable Directo (sm-clock-agent.exe)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent.exe)
+
+            ### Instalación rápida:
+            1. Descarga y descomprime `sm-clock-agent-windows-x64.zip`.
+            2. Haz clic derecho en `install-service.bat` y selecciona **"Ejecutar como Administrador"**.
+            3. Abre en tu navegador [http://127.0.0.1:8085](http://127.0.0.1:8085) e inicia sesión con tus credenciales de Super-Admin o Admin del Tenant.
+          files: |
+            ./release-bundle/sm-clock-agent-windows-x64.zip
+            ./agent/dist/sm-clock-agent.exe
+          prerelease: false
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
