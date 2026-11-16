@@ -73,7 +73,7 @@ function LoginFormContent() {
     if (err === 'super_admin_no_autorizado') {
       setIsSuperAdminMode(true);
       setErrorMessage(
-        'La cuenta de Google seleccionada no está registrada en SUPER_ADMIN_BOOTSTRAP_EMAILS. Acceso denegado al panel Super-Admin.',
+        'La cuenta de Google seleccionada no está registrada en sm-clock. Acceso denegado al panel Administrativo.',
       );
     } else if (err === 'sin_invitacion') {
       setErrorMessage(
