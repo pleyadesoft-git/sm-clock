@@ -63,27 +63,61 @@ jobs:
         run: |
           $bundleDir = "./release-bundle/sm-clock-agent-windows-x64"
           New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
-          
+
+          # Intentar incluir NSSM (Non-Sucking Service Manager) en el paquete
+          try {
+            choco install nssm -y --no-progress
+            $nssmCmd = Get-Command nssm -ErrorAction SilentlyContinue
+            if ($nssmCmd -and (Test-Path $nssmCmd.Source)) {
+              Copy-Item $nssmCmd.Source "$bundleDir/nssm.exe"
+            }
+          } catch {
+            Write-Host "Choco nssm install failed, fallback to schtasks in script"
+          }
+
           Copy-Item ./agent/dist/sm-clock-agent.exe $bundleDir/
           Copy-Item ./agent/scripts/install-service.bat $bundleDir/
           Copy-Item ./agent/scripts/install-service.ps1 $bundleDir/
           Copy-Item ./agent/scripts/uninstall-service.bat $bundleDir/
-          Copy-Item ./agent/icon.ico $bundleDir/
+          Copy-Item ./agent/scripts/iniciar-agente.bat $bundleDir/
+          Copy-Item ./agent/scripts/abrir-interfaz.bat $bundleDir/
+          if (Test-Path ./agent/src/agent/ui/icon.ico) {
+            Copy-Item ./agent/src/agent/ui/icon.ico $bundleDir/
+          }
 
           $readmeText = @"
           ========================================================
             SM-CLOCK AGENTE LOCAL DE ASISTENCIA (TIJUANA, B.C.)
           ========================================================
-          Instrucciones de Instalacion Rapida:
+          El Agente Local captura checadas de relojes ZKTeco y Hikvision
+          en la red local del cliente y las sincroniza con el SaaS SM-Clock.
 
-          1. Coloca esta carpeta en una ubicacion permanente del equipo (ej. C:\SM-Clock-Agent).
+          COMO USAR ESTE PAQUETE:
+
+          --- OPCION A: INSTALACION EN SEGUNDO PLANO (SERVICIO RECOMENDADO) ---
+          1. Coloca esta carpeta descomprimida en una ruta permanente
+             (ejemplo: C:\SM-Clock-Agent).
           2. Haz clic derecho sobre 'install-service.bat' y selecciona:
              'Ejecutar como Administrador'.
-          3. El agente se registrara e iniciara automaticamente en segundo plano como Servicio de Windows.
-          4. Abre tu navegador web en:
-             http://127.0.0.1:8085
-          5. Inicia sesion con tus credenciales de Super-Admin o Admin del Tenant (o con el PIN de emergencia 123456).
-          6. Configura la IP y puerto de tus relojes checadores (ZKTeco o Hikvision) y realiza la prueba de conexion.
+          3. El agente se registrara como servicio de arranque automatico.
+          4. Se abrira tu navegador en http://127.0.0.1:8085
+
+          --- OPCION B: EJECUCION MANUAL / MODO PRUEBAS ---
+          1. Haz doble clic en 'iniciar-agente.bat' o en 'sm-clock-agent.exe'.
+          2. Se abrira una ventana de consola y automaticamente se lanzara
+             tu navegador en: http://127.0.0.1:8085
+
+          --- CONFIGURACION EN LA INTERFAZ WEB (http://127.0.0.1:8085) ---
+          1. Enrolamiento: En la pestana 'Diagnostico Cloud & APIs', ingresa el
+             codigo de un solo uso generado en la plataforma web de Super-Admin.
+          2. Relojes: En la pestana 'Relojes y Terminales', captura la IP,
+             puerto y marca (ZKTeco / Hikvision), haz clic en 'Probar Conexion'
+             y luego en 'Guardar Reloj en SQLite'.
+          3. Acceso Tecnico: Puedes iniciar sesion con tus credenciales de
+             Super-Admin / Admin del Tenant o con el PIN offline: 123456.
+
+          Para abrir el panel en cualquier momento, haz doble clic en:
+             abrir-interfaz.bat
           "@
           Set-Content -Path "$bundleDir/LEEME_INSTALACION.txt" -Value $readmeText -Encoding UTF8
 

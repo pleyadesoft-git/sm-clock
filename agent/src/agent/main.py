@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import threading
+import time
+import webbrowser
 from pathlib import Path
 
 import uvicorn
@@ -29,26 +32,47 @@ logging.basicConfig(
 logger = logging.getLogger("sm_clock_agent")
 
 
-def run_agent_service(settings: AgentSettings | None = None) -> None:
+def _launch_browser_after_delay(url: str, delay: float = 1.2) -> None:
+    time.sleep(delay)
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass
+
+
+def run_agent_service(settings: AgentSettings | None = None, open_browser: bool = True) -> None:
     cfg = settings or AgentSettings()
     db = AgentLocalDatabase(cfg.db_path)
 
-    # Restaurar credenciales si ya se enroló previamente
+    # Restaurar credenciales y URL si ya se enroló previamente
     saved_agent_id = db.get_config("agente_id")
     saved_token = db.get_config("credencial_token")
+    saved_server_url = db.get_config("server_url")
     if saved_agent_id:
         cfg.agente_id = saved_agent_id
     if saved_token:
         cfg.credencial_token = saved_token
+    if saved_server_url:
+        cfg.server_url = saved_server_url
 
     saved_tz = db.get_config("zona_horaria")
     if saved_tz:
         cfg.zona_horaria = saved_tz
 
-    logger.info("Iniciando SM-Clock Agente Local v%s (Tijuana, B.C.)", __version__)
-    logger.info("Base de datos local: %s (WAL: %s)", cfg.db_path, db.get_journal_mode())
-    logger.info("Zona horaria: %s", cfg.zona_horaria)
-    logger.info("Agente ID: %s", cfg.agente_id or "(Pendiente de enrolamiento)")
+    ui_url = f"http://{cfg.diagnostic_host}:{cfg.diagnostic_port}"
+
+    print("=" * 66)
+    print(f"  SM-CLOCK AGENTE LOCAL v{__version__} (Tijuana, B.C.)")
+    print("=" * 66)
+    print(f"  * Base de datos:  {cfg.db_path} (WAL: {db.get_journal_mode()})")
+    print(f"  * Agente ID:      {cfg.agente_id or '(Sin enrolar)'}")
+    print(f"  * Servidor SaaS:  {cfg.server_url}")
+    print(f"  * Interfaz Web:   {ui_url}")
+    if open_browser:
+        print(f"  -> Abriendo navegador automaticamente en {ui_url} ...")
+        threading.Thread(target=_launch_browser_after_delay, args=(ui_url,), daemon=True).start()
+    print("  (Presiona Ctrl+C en esta consola para detener el agente)")
+    print("=" * 66)
 
     sync_client = CloudSyncClient(
         db=db,
@@ -75,7 +99,7 @@ def run_agent_service(settings: AgentSettings | None = None) -> None:
         tz_name=cfg.zona_horaria,
     )
 
-    logger.info("Servidor de diagnóstico disponible exclusivamente en http://%s:%d", cfg.diagnostic_host, cfg.diagnostic_port)
+    logger.info("Servidor de diagnóstico disponible en %s", ui_url)
     try:
         uvicorn.run(
             app,
@@ -97,6 +121,7 @@ def main() -> None:
     run_parser = subparsers.add_parser("run", help="Inicia el servicio del agente y la UI de diagnóstico")
     run_parser.add_argument("--db", default="agent.sqlite", help="Ruta de la base de datos SQLite")
     run_parser.add_argument("--port", type=int, default=LOCAL_DIAGNOSTIC_PORT, help="Puerto de diagnóstico (8085)")
+    run_parser.add_argument("--no-browser", action="store_true", help="No abrir automáticamente el navegador web")
 
     # Comando enroll
     enroll_parser = subparsers.add_parser("enroll", help="Enrola el agente con un código de un solo uso")
@@ -111,7 +136,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "enroll":
+    if args.command == "run":
+        cfg = AgentSettings(db_path=args.db, diagnostic_port=args.port)
+        run_agent_service(cfg, open_browser=not args.no_browser)
+
+    elif args.command == "enroll":
         db = AgentLocalDatabase(args.db)
         print(f"Enrolando agente '{args.name}' contra {args.server}...")
         res = enroll_agent_with_code(
@@ -123,6 +152,7 @@ def main() -> None:
             db.set_config("agente_id", res["agente_id"])
             db.set_config("credencial_token", res["credencial_token"])
             db.set_config("tenant_id", res.get("tenant_id", ""))
+            db.set_config("server_url", args.server)
             if "zona_horaria" in res:
                 db.set_config("zona_horaria", res["zona_horaria"])
             print(f"[OK] Enrolamiento exitoso! Agente ID: {res['agente_id']}")
@@ -142,7 +172,8 @@ def main() -> None:
         db.close()
 
     else:
-        run_agent_service()
+        # Ejecución por defecto (ej. doble clic en sm-clock-agent.exe)
+        run_agent_service(open_browser=True)
 
 
 if __name__ == "__main__":

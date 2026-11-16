@@ -11,48 +11,71 @@ if %errorLevel% neq 0 (
 )
 
 echo ========================================================
-echo  SM-Clock - Instalador de Servicio de Windows
+echo  SM-Clock - Instalador de Servicio de Windows (x64)
 echo ========================================================
 
 set "SERVICE_NAME=SMClockAgent"
 set "DISPLAY_NAME=SM-Clock Agente Local de Asistencia"
-set "AGENT_DIR=%~dp0\.."
-cd /d "%AGENT_DIR%"
 
-set "EXE_PATH=%AGENT_DIR%\dist\sm-clock-agent.exe"
-if not exist "%EXE_PATH%" (
-    if exist "%AGENT_DIR%\sm-clock-agent.exe" (
-        set "EXE_PATH=%AGENT_DIR%\sm-clock-agent.exe"
-    ) else (
-        echo [ERROR] No se encontro el ejecutable sm-clock-agent.exe.
-        echo Compilalo primero con 'scripts\build-exe.bat' o colocalo en la carpeta del agente.
-        pause
-        exit /b 1
-    )
+:: Deteccion inteligente de la carpeta del ejecutable
+set "SCRIPT_DIR=%~dp0"
+set "EXE_PATH="
+set "AGENT_DIR="
+
+if exist "%SCRIPT_DIR%sm-clock-agent.exe" (
+    set "AGENT_DIR=%SCRIPT_DIR%"
+    set "EXE_PATH=%SCRIPT_DIR%sm-clock-agent.exe"
+) else if exist "%SCRIPT_DIR%dist\sm-clock-agent.exe" (
+    set "AGENT_DIR=%SCRIPT_DIR%"
+    set "EXE_PATH=%SCRIPT_DIR%dist\sm-clock-agent.exe"
+) else if exist "%SCRIPT_DIR%..\sm-clock-agent.exe" (
+    set "AGENT_DIR=%SCRIPT_DIR%..\"
+    set "EXE_PATH=%SCRIPT_DIR%..\sm-clock-agent.exe"
+) else if exist "%SCRIPT_DIR%..\dist\sm-clock-agent.exe" (
+    set "AGENT_DIR=%SCRIPT_DIR%..\"
+    set "EXE_PATH=%SCRIPT_DIR%..\dist\sm-clock-agent.exe"
 )
+
+if not defined EXE_PATH (
+    echo [ERROR] No se encontro sm-clock-agent.exe.
+    echo Asegurate de descomprimir todos los archivos del .ZIP en la misma carpeta.
+    echo Carpeta actual: %SCRIPT_DIR%
+    pause
+    exit /b 1
+)
+
+cd /d "%AGENT_DIR%"
+set "AGENT_DIR=%CD%"
+
+echo Carpeta de instalacion: %AGENT_DIR%
+echo Archivo ejecutable:     %EXE_PATH%
 
 if not exist "%AGENT_DIR%\logs" (
     mkdir "%AGENT_DIR%\logs"
 )
 
-:: Verificar si NSSM esta disponible en la carpeta o PATH
-set "NSSM_EXE=%AGENT_DIR%\scripts\nssm.exe"
-if not exist "%NSSM_EXE%" (
+:: Buscar NSSM (Service Manager) en la carpeta local o en el PATH
+set "NSSM_EXE="
+if exist "%AGENT_DIR%\nssm.exe" (
+    set "NSSM_EXE=%AGENT_DIR%\nssm.exe"
+) else if exist "%SCRIPT_DIR%nssm.exe" (
+    set "NSSM_EXE=%SCRIPT_DIR%nssm.exe"
+) else if exist "%AGENT_DIR%\scripts\nssm.exe" (
+    set "NSSM_EXE=%AGENT_DIR%\scripts\nssm.exe"
+) else (
     where nssm >nul 2>&1
     if %errorLevel% equ 0 (
         set "NSSM_EXE=nssm"
-    ) else (
-        set "NSSM_EXE="
     )
 )
 
 if defined NSSM_EXE (
-    echo [1/4] Deteniendo servicio previo si existe...
+    echo.
+    echo [1/3] Configurando como Servicio de Windows (via NSSM)...
     "%NSSM_EXE%" stop "%SERVICE_NAME%" >nul 2>&1
     "%NSSM_EXE%" remove "%SERVICE_NAME%" confirm >nul 2>&1
 
-    echo [2/4] Registrando servicio con NSSM...
-    "%NSSM_EXE%" install "%SERVICE_NAME%" "%EXE_PATH%" "run"
+    "%NSSM_EXE%" install "%SERVICE_NAME%" "%EXE_PATH%" "run" "--no-browser"
     "%NSSM_EXE%" set "%SERVICE_NAME%" AppDirectory "%AGENT_DIR%"
     "%NSSM_EXE%" set "%SERVICE_NAME%" DisplayName "%DISPLAY_NAME%"
     "%NSSM_EXE%" set "%SERVICE_NAME%" Description "Captura checadas de relojes ZKTeco y Hikvision y las envia al SaaS SM-Clock."
@@ -63,30 +86,31 @@ if defined NSSM_EXE (
     "%NSSM_EXE%" set "%SERVICE_NAME%" AppRotateOnline 1
     "%NSSM_EXE%" set "%SERVICE_NAME%" AppRotateBytes 10485760
 
-    echo [3/4] Iniciando servicio de Windows...
+    echo [2/3] Iniciando servicio de Windows...
     "%NSSM_EXE%" start "%SERVICE_NAME%"
+    sc.exe query "%SERVICE_NAME%"
 ) else (
-    echo [INFO] NSSM no encontrado. Instalando mediante Windows sc.exe nativo...
-    sc.exe stop "%SERVICE_NAME%" >nul 2>&1
-    sc.exe delete "%SERVICE_NAME%" >nul 2>&1
-
-    sc.exe create "%SERVICE_NAME%" binPath= "\"%EXE_PATH%\" run" start= auto DisplayName= "%DISPLAY_NAME%"
-    sc.exe description "%SERVICE_NAME%" "Captura checadas de relojes ZKTeco y Hikvision y las envia al SaaS SM-Clock."
-    sc.exe failure "%SERVICE_NAME%" reset= 86400 actions= restart/60000/restart/60000/restart/60000
-    sc.exe start "%SERVICE_NAME%"
+    echo.
+    echo [1/3] NSSM no encontrado. Registrando como Tarea Programada de Inicio Automatico (SYSTEM)...
+    schtasks /delete /tn "%SERVICE_NAME%" /f >nul 2>&1
+    schtasks /create /tn "%SERVICE_NAME%" /tr "\"%EXE_PATH%\" run --no-browser" /sc ONSTART /ru "SYSTEM" /rl HIGHEST /f
+    echo [2/3] Iniciando tarea en segundo plano...
+    schtasks /run /tn "%SERVICE_NAME%"
 )
 
-echo [4/4] Verificando estado del servicio...
-sc.exe query "%SERVICE_NAME%"
+echo [3/3] Abriendo panel web en el navegador...
+timeout /t 2 >nul
+start http://127.0.0.1:8085
 
 echo.
 echo ========================================================
-echo  INSTALACION COMPLETADA
+echo  INSTALACION COMPLETADA EXITOSAMENTE
 echo ========================================================
-echo El agente se esta ejecutando en segundo plano como servicio.
-echo Accede a la UI de diagnostico en el navegador:
+echo El agente se esta ejecutando en segundo plano.
+echo Interfaz grafica disponible en:
 echo   http://127.0.0.1:8085
-echo Logs en:
-echo   %AGENT_DIR%\logs\agent.log
+echo.
+echo Puedes ingresar con tus credenciales de Super-Admin o
+echo con el PIN de emergencia offline: 123456
 echo ========================================================
 pause

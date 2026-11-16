@@ -410,11 +410,14 @@ def create_diagnostic_app(
         )
 
     @app.post("/api/enroll")
-    def api_enroll(payload: dict[str, Any], request: Request) -> dict[str, object]:
-        require_admin_auth(request)
-        code = payload.get("codigo_enrolamiento", "")
-        agent_name = payload.get("nombre_agente", "Agente Local")
-        srv_url = payload.get("server_url", "http://127.0.0.1:3000")
+    def api_enroll(payload: dict[str, Any], request: Request, response: Response) -> dict[str, object]:
+        current_agent = db.get_config("agente_id")
+        if current_agent:
+            require_admin_auth(request)
+
+        code = str(payload.get("codigo_enrolamiento") or "").strip()
+        agent_name = str(payload.get("nombre_agente") or "Agente Local").strip()
+        srv_url = str(payload.get("server_url") or db.get_config("server_url") or "http://127.0.0.1:3000").strip()
         if not code:
             raise HTTPException(status_code=400, detail="Código de enrolamiento obligatorio")
 
@@ -424,13 +427,34 @@ def create_diagnostic_app(
             server_url=srv_url,
         )
         if not result:
-            raise HTTPException(status_code=400, detail="No se pudo enrolar el agente. Verifica el código.")
+            raise HTTPException(status_code=400, detail="No se pudo enrolar el agente. Verifica el código y la conectividad.")
 
         db.set_config("agente_id", str(result["agente_id"]))
         db.set_config("credencial_token", str(result["credencial_token"]))
         db.set_config("tenant_id", str(result.get("tenant_id", "")))
+        db.set_config("server_url", srv_url)
         if "zona_horaria" in result:
             db.set_config("zona_horaria", str(result["zona_horaria"]))
+
+        if sync_client:
+            sync_client.agente_id = str(result["agente_id"])
+            sync_client.credencial_token = str(result["credencial_token"])
+            sync_client.server_url = srv_url.rstrip("/")
+
+        # Iniciar sesión de admin local automáticamente tras enrolar
+        session_token = db.create_auth_session(
+            email="admin_local@smclock.local",
+            nombre=agent_name,
+            rol="SUPER_ADMIN",
+            tenant_id=result.get("tenant_id"),
+        )
+        response.set_cookie(
+            key="sm_agent_session",
+            value=session_token,
+            httponly=True,
+            samesite="lax",
+            max_age=12 * 3600,
+        )
 
         return {"ok": True, "agente_id": result["agente_id"], "tenant_id": result.get("tenant_id")}
 
@@ -920,9 +944,10 @@ def create_diagnostic_app(
         </div>
 
         <div id="fields-offline" style="display:none;">
+          <div style="font-size: 12px; color: var(--warning); margin-bottom: 12px;">💡 Acceso técnico local inmediato sin requerir internet. PIN por defecto: <strong>123456</strong>.</div>
           <div class="form-group" style="margin-bottom: 16px;">
             <label>PIN de Emergencia Local</label>
-            <input type="password" id="login-pin" placeholder="PIN de 6 dígitos (por defecto 123456)">
+            <input type="password" id="login-pin" placeholder="123456">
           </div>
         </div>
 
