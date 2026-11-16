@@ -50,3 +50,10 @@ export function CardContent({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('flex flex-col gap-[var(--s-3)]', className)} {...props} />;
 }
+
+export function CardFooter({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('flex items-center pt-[var(--s-3)]', className)} {...props} />;
+}

@@ -24,6 +24,7 @@ export interface ElectronAPI {
     maximize: () => void;
     close: () => void;
   };
+  quitApp: () => Promise<void>;
   openExternal: (url: string) => Promise<void>;
 }
 
@@ -52,6 +53,7 @@ const electronAPI: ElectronAPI = {
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
   },
+  quitApp: () => ipcRenderer.invoke('app:quit'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
 };
 

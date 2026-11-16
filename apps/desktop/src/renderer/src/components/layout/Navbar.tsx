@@ -15,7 +15,9 @@ import {
   Square,
   X,
   Building2,
+  Power,
 } from 'lucide-react';
+import { ConfirmDialog } from '../ui/confirm-dialog';
 
 interface NavbarProps {
   currentTab: 'relojes' | 'monitor' | 'logs';
@@ -31,8 +33,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { user, tenants, selectedTenantId, setSelectedTenantId, logout } = useAuth();
   const [sidecarRunning, setSidecarRunning] = useState<boolean>(true);
   const [restarting, setRestarting] = useState<boolean>(false);
+  const [showQuitDialog, setShowQuitDialog] = useState<boolean>(false);
 
   const isMac = navigator.platform.toUpperCase().includes('MAC');
+
+  const handleQuitApp = async () => {
+    if (window.electronAPI?.quitApp) {
+      await window.electronAPI.quitApp();
+    } else {
+      await logout();
+      window.close();
+    }
+  };
 
   useEffect(() => {
     async function checkSidecar() {
@@ -193,9 +205,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             size="sm"
             className="h-8 w-8 p-0 text-[var(--text-2)] hover:text-[var(--danger)]"
             onClick={logout}
-            title="Cerrar sesión"
+            title="Cerrar sesión de usuario"
           >
             <LogOut className="w-4 h-4" />
+          </Button>
+
+          {/* Botón para apagar y cerrar totalmente el agente */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 text-[var(--text-2)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors"
+            onClick={() => setShowQuitDialog(true)}
+            title="Cerrar totalmente el agente (apagar motor)"
+          >
+            <Power className="w-4 h-4" />
           </Button>
 
           {/* Controles de ventana en Windows/Linux */}
@@ -226,6 +249,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showQuitDialog}
+        onOpenChange={setShowQuitDialog}
+        title="¿Cerrar totalmente el agente?"
+        description="Se detendrá el motor local y la aplicación se cerrará por completo. Durante este tiempo no se leerán marcas de los relojes biométricos ni se sincronizarán con la nómina hasta que vuelvas a abrir la aplicación."
+        confirmText="Cerrar y apagar motor"
+        cancelText="Mantener activo"
+        destructive={true}
+        onConfirm={handleQuitApp}
+      />
     </header>
   );
 };

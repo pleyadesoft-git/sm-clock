@@ -73,7 +73,7 @@ export class AppTray {
       },
       { type: 'separator' },
       {
-        label: 'Salir de SM-Clock',
+        label: 'Salir y detener agente (Cerrar totalmente)',
         click: () => {
           if (this.onQuit) {
             this.onQuit();

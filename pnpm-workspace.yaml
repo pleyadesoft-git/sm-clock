@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   core-js: true
   electron: true
+  electron-winstaller: false
   esbuild: true
   sharp: true
 minimumReleaseAgeExclude:

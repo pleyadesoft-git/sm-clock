@@ -1,6 +1,8 @@
 {
   "name": "@sm-clock/desktop",
   "version": "0.1.0",
+  "description": "Agente local de escritorio SM-Clock para captura y monitoreo de checadas de asistencia",
+  "author": "SM-Clock",
   "private": true,
   "type": "module",
   "main": "dist/electron/main/main.js",
@@ -8,7 +10,10 @@
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.electron.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "start": "electron ."
+    "start": "electron .",
+    "package:mac": "pnpm build && electron-builder --mac",
+    "package:win": "pnpm build && electron-builder --win",
+    "package:all": "pnpm build && electron-builder -mw"
   },
   "dependencies": {
     "@hookform/resolvers": "^7.0.6",
@@ -37,9 +42,44 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^35.0.0",
+    "electron-builder": "^26.18.0",
     "postcss": "^8.4.49",
     "tailwindcss": "4.3.5",
     "typescript": "5.9.3",
     "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.pleyadesoft.smclock.agent",
+    "productName": "SM-Clock Agente",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../agent/dist",
+        "to": "agent",
+        "filter": ["sm-clock-agent*", "*.exe"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": ["dmg", "zip"],
+      "icon": "assets/icons/icon-512.png"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SM-Clock Agente"
+    }
   }
 }

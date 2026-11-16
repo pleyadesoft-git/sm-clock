@@ -5,11 +5,12 @@ import { z } from 'zod';
 import { SmClockLogo } from '../../ui/sm-clock-logo';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '../../ui/form';
 import { SegmentedControl } from '../../ui/segmented-control';
 import { useAuth } from '../../../context/AuthContext';
-import { ShieldCheck, KeyRound, Server, AlertCircle } from 'lucide-react';
+import { ShieldCheck, KeyRound, Server, AlertCircle, Power } from 'lucide-react';
+import { ConfirmDialog } from '../../ui/confirm-dialog';
 
 const loginSchema = z.object({
   email: z.string().email('Ingresa un correo electrónico válido'),
@@ -31,6 +32,15 @@ export const LoginView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showQuitDialog, setShowQuitDialog] = useState(false);
+
+  const handleQuitApp = async () => {
+    if (window.electronAPI?.quitApp) {
+      await window.electronAPI.quitApp();
+    } else {
+      window.close();
+    }
+  };
 
   const formCloud = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -313,7 +323,29 @@ export const LoginView: React.FC = () => {
             </Form>
           )}
         </CardContent>
+
+        <CardFooter className="pt-0 pb-4 flex justify-center border-t border-[var(--separator)]/40 mt-1">
+          <button
+            type="button"
+            onClick={() => setShowQuitDialog(true)}
+            className="text-xs text-[var(--text-2)] hover:text-[var(--danger)] flex items-center gap-1.5 transition-colors cursor-pointer py-1.5 px-3 rounded-md hover:bg-[var(--surface-2)] mt-3"
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span>Cerrar totalmente el agente</span>
+          </button>
+        </CardFooter>
       </Card>
+
+      <ConfirmDialog
+        open={showQuitDialog}
+        onOpenChange={setShowQuitDialog}
+        title="¿Cerrar totalmente el agente?"
+        description="Se detendrá el motor local y la aplicación se cerrará por completo. Durante este tiempo no se leerán marcas de los relojes biométricos ni se sincronizarán con la nómina hasta que vuelvas a abrir la aplicación."
+        confirmText="Cerrar y apagar motor"
+        cancelText="Mantener activo"
+        destructive={true}
+        onConfirm={handleQuitApp}
+      />
     </div>
   );
 };

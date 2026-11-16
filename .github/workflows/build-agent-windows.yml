@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
     paths:
       - 'agent/**'
+      - 'apps/desktop/**'
       - '.github/workflows/build-agent-windows.yml'
       - 'packages/contracts/**'
     tags:
@@ -13,6 +14,7 @@ on:
     branches: [main, develop]
     paths:
       - 'agent/**'
+      - 'apps/desktop/**'
       - '.github/workflows/build-agent-windows.yml'
       - 'packages/contracts/**'
   workflow_dispatch:
@@ -58,6 +60,30 @@ jobs:
           .\dist\sm-clock-agent.exe status
           .\dist\sm-clock-agent.exe --help
 
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Install Node Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Electron Desktop Installer (Windows NSIS)
+        run: pnpm --filter @sm-clock/desktop package:win
+
+      - name: Upload Windows Desktop Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sm-clock-desktop-windows-installer
+          path: ./apps/desktop/release/*.exe
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Prepare distribution bundle
         shell: pwsh
         run: |
@@ -94,7 +120,12 @@ jobs:
 
           COMO USAR ESTE PAQUETE:
 
-          --- OPCION A: INSTALACION EN SEGUNDO PLANO (SERVICIO RECOMENDADO) ---
+          --- OPCION A: APLICACION DE ESCRITORIO CON INTERFAZ (RECOMENDADA) ---
+          1. Ejecuta 'SM-Clock Agente Setup.exe' para instalar la aplicacion.
+          2. Abre el acceso directo 'SM-Clock Agente' desde el escritorio.
+          3. Inicia sesion con tus credenciales de Super-Admin o Admin del Tenant.
+
+          --- OPCION B: INSTALACION EN SEGUNDO PLANO (SERVICIO DE WINDOWS) ---
           1. Coloca esta carpeta descomprimida en una ruta permanente
              (ejemplo: C:\SM-Clock-Agent).
           2. Haz clic derecho sobre 'install-service.bat' y selecciona:
@@ -102,12 +133,12 @@ jobs:
           3. El agente se registrara como servicio de arranque automatico.
           4. Se abrira tu navegador en http://127.0.0.1:8085
 
-          --- OPCION B: EJECUCION MANUAL / MODO PRUEBAS ---
+          --- OPCION C: EJECUCION MANUAL / MODO PRUEBAS ---
           1. Haz doble clic en 'iniciar-agente.bat' o en 'sm-clock-agent.exe'.
           2. Se abrira una ventana de consola y automaticamente se lanzara
              tu navegador en: http://127.0.0.1:8085
 
-          --- CONFIGURACION EN LA INTERFAZ WEB (http://127.0.0.1:8085) ---
+          --- CONFIGURACION EN LA INTERFAZ ---
           1. Enrolamiento: En la pestana 'Diagnostico Cloud & APIs', ingresa el
              codigo de un solo uso generado en la plataforma web de Super-Admin.
           2. Relojes: En la pestana 'Relojes y Terminales', captura la IP,
@@ -140,17 +171,19 @@ jobs:
           name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Agente Local Windows (Última Versión)' }}
           body: |
             ## SM-Clock Agente Local para Windows (x64)
-            Agente en segundo plano para captura de checadas de relojes ZKTeco y Hikvision (Tijuana, B.C.).
+            Agente para captura de checadas de relojes ZKTeco y Hikvision (Tijuana, B.C.).
 
             ### Enlaces de descarga directa:
-            - 📦 [**Descargar Paquete Completo (.zip)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent-windows-x64.zip) — Incluye instalador automático como servicio de Windows.
+            - 🖥️ [**Descargar Instalador de Escritorio (.exe Setup)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/SM-Clock-Agente-Setup.exe) — Aplicación nativa completa con interfaz visual y motor local.
+            - 📦 [**Descargar Paquete Servicio (.zip)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent-windows-x64.zip) — Servicio silencioso de Windows sin interfaz gráfica.
             - ⚡ [**Descargar Ejecutable Directo (sm-clock-agent.exe)**](https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent.exe)
 
-            ### Instalación rápida:
-            1. Descarga y descomprime `sm-clock-agent-windows-x64.zip`.
-            2. Haz clic derecho en `install-service.bat` y selecciona **"Ejecutar como Administrador"**.
-            3. Abre en tu navegador [http://127.0.0.1:8085](http://127.0.0.1:8085) e inicia sesión con tus credenciales de Super-Admin o Admin del Tenant.
+            ### Instalación rápida de la app de escritorio:
+            1. Descarga y ejecuta el instalador `.exe`.
+            2. Sigue las instrucciones del asistente de instalación.
+            3. Inicia sesión con tus credenciales de Super-Admin o Admin de la Empresa.
           files: |
+            ./apps/desktop/release/*.exe
             ./release-bundle/sm-clock-agent-windows-x64.zip
             ./agent/dist/sm-clock-agent.exe
           prerelease: false

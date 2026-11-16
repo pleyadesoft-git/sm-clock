@@ -22,6 +22,7 @@ export interface ElectronAPI {
     maximize: () => void;
     close: () => void;
   };
+  quitApp: () => Promise<void>;
   openExternal: (url: string) => Promise<void>;
 }
 

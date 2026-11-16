@@ -1,11 +1,28 @@
 import { app, BrowserWindow, ipcMain, shell, safeStorage } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SidecarManager } from './sidecar.js';
 import { AppTray } from './tray.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function getRendererPath(): string {
+  const candidates = [
+    path.join(app.getAppPath(), 'dist/renderer/index.html'),
+    path.join(__dirname, '../../renderer/index.html'),
+    path.join(__dirname, '../renderer/index.html'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return path.join(app.getAppPath(), 'dist/renderer/index.html');
+}
 
 let mainWindow: BrowserWindow | null = null;
 let appTray: AppTray | null = null;
@@ -65,18 +82,25 @@ function createWindow(): BrowserWindow {
   });
 
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+  const rendererFile = getRendererPath();
+
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else if (isDev) {
-    win.loadURL('http://localhost:5173').catch(() => {
-      // Fallback a archivo compilado si el servidor Vite no está corriendo
-      const distIndex = path.join(__dirname, '../renderer/index.html');
-      win.loadFile(distIndex);
-    });
+    // Si el dev server Vite está encendido, usarlo con HMR; si no, cargar index.html compilado
+    fetch('http://127.0.0.1:5173')
+      .then(() => win.loadURL('http://localhost:5173'))
+      .catch(() => win.loadFile(rendererFile));
   } else {
-    const distIndex = path.join(__dirname, '../renderer/index.html');
-    win.loadFile(distIndex);
+    win.loadFile(rendererFile);
   }
+
+  win.webContents.on('did-fail-load', (_, errorCode, errorDescription) => {
+    console.error(`Error al cargar interfaz de usuario (${errorCode}): ${errorDescription}`);
+    if (isDev && fs.existsSync(rendererFile)) {
+      win.loadFile(rendererFile);
+    }
+  });
 
   // Prevenir navegación externa en el webview
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -145,6 +169,16 @@ function setupIpc() {
 
   ipcMain.on('window:close', () => {
     mainWindow?.close();
+  });
+
+  ipcMain.handle('app:quit', async () => {
+    isQuitting = true;
+    appTray?.destroy();
+    try {
+      await sidecar.stop();
+    } finally {
+      app.quit();
+    }
   });
 
   ipcMain.handle('shell:openExternal', async (_, url: string) => {

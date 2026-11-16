@@ -15,7 +15,10 @@
     "test": "vitest run",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > packages/contracts/src/db.types.ts",
-    "db:test": "supabase test db"
+    "db:test": "supabase test db",
+    "build:agent": "cd agent && .venv/bin/pyinstaller --clean -y agent.spec",
+    "package:mac": "pnpm build:agent && pnpm --filter @sm-clock/desktop package:mac",
+    "package:win": "pnpm --filter @sm-clock/desktop package:win"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
