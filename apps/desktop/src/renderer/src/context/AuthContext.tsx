@@ -129,8 +129,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    // Escuchar deep links nativos sm-clock://auth/callback#... desde Electron
+    const cleanupDeepLink = window.electronAPI?.onDeepLink?.(async (rawUrl: string) => {
+      try {
+        const hashIdx = rawUrl.indexOf('#');
+        const queryIdx = rawUrl.indexOf('?');
+        const hashPart = hashIdx !== -1 ? rawUrl.slice(hashIdx + 1) : '';
+        const queryPart =
+          queryIdx !== -1
+            ? hashIdx !== -1
+              ? rawUrl.slice(queryIdx + 1, hashIdx)
+              : rawUrl.slice(queryIdx + 1)
+            : '';
+
+        const params = new URLSearchParams(hashPart || queryPart);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+          const supabaseClient = getSupabaseClient();
+          await supabaseClient.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+        }
+      } catch (err) {
+        console.error('Error al procesar deep link de autenticación:', err);
+      }
+    });
+
     return () => {
       subscription.unsubscribe();
+      cleanupDeepLink?.();
     };
   }, []);
 
@@ -213,19 +243,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // En desarrollo local nos apoyamos en el callback de la app web (puerto 3000),
       // el cual ya está autorizado en la lista de redirección de Supabase.
-      const webBase = isLocal
-        ? 'http://localhost:3000'
-        : (import.meta.env.VITE_WEB_URL as string | undefined) ||
-          (import.meta.env.NEXT_PUBLIC_APP_URL as string | undefined) ||
-          'https://sm-clock.pleyadesoft.com';
+      const redirectUrl = import.meta.env.NEXT_PUBLIC_AUTH_REDIRECT_URL as string | undefined;
+      let webBase =
+        (import.meta.env.VITE_WEB_URL as string | undefined) ||
+        (import.meta.env.NEXT_PUBLIC_APP_URL as string | undefined);
 
-      const targetOrigin = window.location.origin;
+      if (!webBase && redirectUrl) {
+        try {
+          webBase = new URL(redirectUrl).origin;
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!webBase) {
+        webBase = isLocal ? 'http://localhost:3000' : 'https://sm-clock.pleyadesoft.com';
+      }
+
+      const isElectronApp = typeof window !== 'undefined' && Boolean(window.electronAPI);
+      const targetOrigin = isElectronApp ? 'sm-clock://auth/callback' : window.location.origin;
       const callbackUrl = `${webBase}/api/auth/callback?source=desktop&target=${encodeURIComponent(targetOrigin)}`;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: callbackUrl,
+          skipBrowserRedirect: isElectronApp,
           queryParams: {
             prompt: 'select_account',
           },
@@ -236,7 +279,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error;
       }
 
-      if (window.electronAPI?.openExternal && data?.url) {
+      if (isElectronApp && data?.url && window.electronAPI?.openExternal) {
         await window.electronAPI.openExternal(data.url);
       }
     } finally {

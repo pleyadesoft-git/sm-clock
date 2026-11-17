@@ -26,6 +26,7 @@ export interface ElectronAPI {
   };
   quitApp: () => Promise<void>;
   openExternal: (url: string) => Promise<void>;
+  onDeepLink: (callback: (url: string) => void) => () => void;
 }
 
 const electronAPI: ElectronAPI = {
@@ -55,6 +56,15 @@ const electronAPI: ElectronAPI = {
   },
   quitApp: () => ipcRenderer.invoke('app:quit'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  onDeepLink: (callback) => {
+    const handler = (_: unknown, url: string) => {
+      callback(url);
+    };
+    ipcRenderer.on('auth:deepLink', handler);
+    return () => {
+      ipcRenderer.removeListener('auth:deepLink', handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

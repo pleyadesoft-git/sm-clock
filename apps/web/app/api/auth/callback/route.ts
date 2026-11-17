@@ -18,7 +18,7 @@ import { getRequestOrigin } from '@/lib/server/origin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 function sanitizeDesktopTarget(rawTarget: string | null | undefined): string {
-  if (!rawTarget || typeof rawTarget !== 'string') return 'http://localhost:5173';
+  if (!rawTarget || typeof rawTarget !== 'string') return 'sm-clock://auth/callback';
   const trimmed = rawTarget.trim();
 
   // Protocolo nativo de la aplicación de escritorio sm-clock://
@@ -38,10 +38,121 @@ function sanitizeDesktopTarget(rawTarget: string | null | undefined): string {
       return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
     }
   } catch {
-    return 'http://localhost:5173';
+    return 'sm-clock://auth/callback';
   }
 
-  return 'http://localhost:5173';
+  return 'sm-clock://auth/callback';
+}
+
+function buildDesktopClientBridge(rawTarget: string): NextResponse {
+  const target = sanitizeDesktopTarget(rawTarget);
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SM Clock — Conectando con el Agente</title>
+  <style>
+    :root {
+      --bg: #000000;
+      --card: #1c1c1e;
+      --border: #2c2c2e;
+      --text: #ffffff;
+      --subtext: #8e8e93;
+      --primary: #0a84ff;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+      box-sizing: border-box;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(10, 132, 255, 0.15);
+      color: var(--primary);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+    }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.5rem 0; }
+    p { color: var(--subtext); font-size: 0.95rem; line-height: 1.5; margin: 0 0 1.75rem 0; }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--primary);
+      color: #ffffff;
+      padding: 0.85rem 1rem;
+      border-radius: 0.75rem;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: opacity 0.15s ease;
+    }
+    .btn:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 6 9 17l-5-5"/>
+      </svg>
+    </div>
+    <h1 id="title">¡Autenticación Exitosa!</h1>
+    <p id="msg">Regresando a la aplicación de escritorio SM Clock...</p>
+    <a id="btn" href="#" class="btn" style="display:none;">Abrir SM Clock en el escritorio</a>
+  </div>
+  <script>
+    (function() {
+      var hash = window.location.hash || '';
+      var target = ${JSON.stringify(target)};
+      
+      if (hash && hash.indexOf('access_token=') !== -1) {
+        var deepLink = target.indexOf('#') !== -1 ? target : (target + hash);
+        if (target.indexOf('sm-clock://') === 0) {
+          deepLink = 'sm-clock://auth/callback' + hash;
+        }
+        var btn = document.getElementById('btn');
+        btn.href = deepLink;
+        btn.style.display = 'inline-block';
+        window.location.href = deepLink;
+        setTimeout(function() {
+          document.getElementById('msg').innerText = 'Haz clic en el botón de abajo para abrir el agente en tu escritorio si no se abrió automáticamente.';
+        }, 2000);
+      } else {
+        document.getElementById('title').innerText = 'Error de Autenticación';
+        document.getElementById('msg').innerText = 'No se recibieron credenciales válidas en la respuesta de Google.';
+      }
+    })();
+  </script>
+</body>
+</html>`;
+
+  return new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
 }
 
 function buildDesktopResponse(
@@ -194,6 +305,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   };
 
   if (!code) {
+    if (isDesktop) {
+      return buildDesktopClientBridge(targetParam);
+    }
     return handleErrorRedirect('oauth_invalido');
   }
 

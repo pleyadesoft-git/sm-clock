@@ -68,11 +68,13 @@
     "mac": {
       "category": "public.app-category.business",
       "target": ["dmg", "zip"],
-      "icon": "assets/icons/icon-512.png"
+      "icon": "assets/icons/icon-512.png",
+      "artifactName": "SM-Clock-Agente-${os}.${ext}"
     },
     "win": {
       "target": ["nsis"],
-      "icon": "assets/favicon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "SM-Clock-Agente-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,

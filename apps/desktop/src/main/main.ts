@@ -29,16 +29,58 @@ let appTray: AppTray | null = null;
 const sidecar = new SidecarManager(8085);
 let isQuitting = false;
 
+// Registrar esquema de protocolo personalizado sm-clock:// para deep linking
+if (process.defaultApp) {
+  if (process.argv.length >= 2 && process.argv[1]) {
+    app.setAsDefaultProtocolClient('sm-clock', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('sm-clock');
+}
+
+let pendingAuthUrl: string | null = null;
+
+function handleAuthUrl(url: string) {
+  if (!url || !url.startsWith('sm-clock://')) return;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+
+    const currentUrl = mainWindow.webContents.getURL();
+    if (!currentUrl.startsWith('file:') && !currentUrl.startsWith('http://localhost:5173')) {
+      mainWindow.loadFile(getRendererPath()).then(() => {
+        mainWindow?.webContents.send('auth:deepLink', url);
+      });
+      return;
+    }
+
+    mainWindow.webContents.send('auth:deepLink', url);
+  } else {
+    pendingAuthUrl = url;
+  }
+}
+
+// Manejo de deep links en macOS (open-url)
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleAuthUrl(url);
+});
+
 // Manejo de instancia única (single instance lock)
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_, commandLine) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
       mainWindow.focus();
+    }
+    const urlArg = commandLine.find((arg) => arg.startsWith('sm-clock://'));
+    if (urlArg) {
+      handleAuthUrl(urlArg);
     }
   });
 }
@@ -48,7 +90,7 @@ function createWindow(): BrowserWindow {
   const iconPath = path.resolve(
     app.getAppPath(),
     'assets',
-    isWindows ? 'favicon.ico' : 'icons/icon-512.png',
+    isWindows ? 'icon.ico' : 'icons/icon-512.png',
   );
 
   const win = new BrowserWindow({
@@ -72,6 +114,13 @@ function createWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => {
     win.show();
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    if (pendingAuthUrl) {
+      win.webContents.send('auth:deepLink', pendingAuthUrl);
+      pendingAuthUrl = null;
+    }
   });
 
   win.on('close', (event) => {
@@ -99,6 +148,16 @@ function createWindow(): BrowserWindow {
     console.error(`Error al cargar interfaz de usuario (${errorCode}): ${errorDescription}`);
     if (isDev && fs.existsSync(rendererFile)) {
       win.loadFile(rendererFile);
+    }
+  });
+
+  // Prevenir que la ventana principal navegue fuera de la app; abrir URLs externas en el navegador del SO
+  win.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      if (!url.startsWith('http://localhost:5173') && !url.startsWith('http://127.0.0.1:5173')) {
+        event.preventDefault();
+        shell.openExternal(url);
+      }
     }
   });
 

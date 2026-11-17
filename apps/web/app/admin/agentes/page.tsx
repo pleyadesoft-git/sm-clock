@@ -2,12 +2,19 @@
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, KeyRound, Plus, ShieldOff } from 'lucide-react';
+import { Copy, Download, KeyRound, Monitor, Plus, Server, ShieldOff } from 'lucide-react';
 import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
+// 1. Agente de Escritorio con Interfaz Gráfica (Electron + Sidecar Python integrado)
+const DESKTOP_DOWNLOAD_WIN_URL =
+  'https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/SM-Clock-Agente-Setup.exe';
+const DESKTOP_DOWNLOAD_MAC_URL =
+  'https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/SM-Clock-Agente-mac.dmg';
+
+// 2. Agente de Servicio en Segundo Plano (Python Standalone)
 const AGENT_DOWNLOAD_ZIP_URL =
   'https://github.com/pleyadesoft-git/sm-clock/releases/latest/download/sm-clock-agent-windows-x64.zip';
 const AGENT_DOWNLOAD_EXE_URL =
@@ -76,6 +83,7 @@ export default function AdminAgentesPage() {
   const [sortBy, setSortBy] = React.useState('created_at');
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
   const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [downloadSheetOpen, setDownloadSheetOpen] = React.useState(false);
 
   const [selectedTenantId, setSelectedTenantId] = React.useState('');
   const [ttlMinutos, setTtlMinutos] = React.useState('30');
@@ -292,22 +300,20 @@ export default function AdminAgentesPage() {
 
   return (
     <AppShell
-      title="Agentes Locales Python (ZKTeco / Hikvision)"
-      subtitle="Enrolamiento seguro de un solo uso, monitoreo de latidos cada 60s y revocación remota"
+      title="Agentes Locales (ZKTeco / Hikvision)"
+      subtitle="Gestión de agentes locales (Escritorio Electron y Servicio Python), enrolamiento seguro y monitoreo en tiempo real"
       mode="admin"
       realtimeState={realtimeState}
       actions={
         <div className="flex flex-wrap items-center gap-[var(--s-2)]">
-          <a
-            href={AGENT_DOWNLOAD_ZIP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-2)] text-sm"
+          <Button
+            variant="secondary"
+            onClick={() => setDownloadSheetOpen(true)}
+            className="inline-flex items-center gap-[var(--s-2)] text-sm"
           >
             <Download className="h-4 w-4" />
-            <span>Descargar Agente Windows (.zip)</span>
-          </a>
+            <span>Descargar Agentes</span>
+          </Button>
           <Button
             onClick={() => {
               setGeneratedCode(null);
@@ -412,26 +418,35 @@ export default function AdminAgentesPage() {
           </div>
 
           <div className="rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--bg-elevated)] p-[var(--s-3)] text-xs text-[var(--text-2)] flex flex-col gap-[var(--s-2)]">
-            <span className="font-semibold text-[var(--text)]">Descargar Agente para Windows</span>
-            <p>Descargue el paquete del agente para ejecutarlo en la PC local del cliente donde están los relojes:</p>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[var(--text)]">Descargar Agente Local</span>
+              <button
+                type="button"
+                onClick={() => setDownloadSheetOpen(true)}
+                className="text-[var(--primary)] hover:underline font-medium"
+              >
+                Ver todos los formatos →
+              </button>
+            </div>
+            <p>Descargue el instalador para la PC o servidor del cliente donde están conectados los relojes:</p>
             <div className="flex flex-wrap items-center gap-[var(--s-2)]">
+              <a
+                href={DESKTOP_DOWNLOAD_WIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-primary inline-flex items-center gap-[var(--s-1)] px-[var(--s-2)] py-[var(--s-1)] text-xs font-semibold"
+              >
+                <Monitor className="h-3.5 w-3.5" />
+                <span>App Escritorio Windows (.exe)</span>
+              </a>
               <a
                 href={AGENT_DOWNLOAD_ZIP_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-1)] px-[var(--s-2)] py-[var(--s-1)] text-xs"
               >
-                <Download className="h-3.5 w-3.5" />
-                <span>Paquete .ZIP (Recomendado)</span>
-              </a>
-              <a
-                href={AGENT_DOWNLOAD_EXE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ios-btn ios-btn-secondary inline-flex items-center gap-[var(--s-1)] px-[var(--s-2)] py-[var(--s-1)] text-xs"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Ejecutable directo (.exe)</span>
+                <Server className="h-3.5 w-3.5" />
+                <span>Servicio Python (.zip)</span>
               </a>
             </div>
           </div>
@@ -474,6 +489,106 @@ export default function AdminAgentesPage() {
             </div>
           )}
         </form>
+      </Sheet>
+
+      {/* Drawer / Sheet de Descarga de Agentes */}
+      <Sheet
+        open={downloadSheetOpen}
+        onOpenChange={setDownloadSheetOpen}
+        title="Descargar Agente Local SM Clock"
+        description="Selecciona la versión adecuada para la infraestructura de terminales biométricas del cliente"
+        footer={
+          <div className="flex w-full items-center justify-end">
+            <Button variant="secondary" onClick={() => setDownloadSheetOpen(false)}>
+              Cerrar
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-[var(--s-4)]">
+          {/* Opción A: Agente de Escritorio Electron */}
+          <div className="rounded-[var(--r-xl)] border border-[var(--primary)]/30 bg-[var(--bg-elevated)] p-[var(--s-4)] shadow-sm">
+            <div className="flex items-center gap-[var(--s-3)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[var(--r-md)] bg-[var(--primary)]/15 text-[var(--primary)]">
+                <Monitor className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-[var(--s-2)]">
+                  <span className="font-semibold text-[var(--text)]">App de Escritorio</span>
+                  <Badge variant="accent">Recomendada</Badge>
+                </div>
+                <p className="text-xs text-[var(--text-2)]">
+                  Electron + Motor Python local integrado
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-[var(--s-3)] text-xs text-[var(--text-2)] leading-relaxed">
+              Ideal para administradores y técnicos. Incluye interfaz visual completa, prueba de conexión IP a terminales, diagnóstico de sincronización y visor de logs de comunicación en vivo.
+            </p>
+
+            <div className="mt-[var(--s-3)] grid grid-cols-1 sm:grid-cols-2 gap-[var(--s-2)]">
+              <a
+                href={DESKTOP_DOWNLOAD_WIN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-primary inline-flex items-center justify-center gap-[var(--s-2)] py-[var(--s-2)] text-xs font-semibold"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Instalador Windows (.exe)</span>
+              </a>
+              <a
+                href={DESKTOP_DOWNLOAD_MAC_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-secondary inline-flex items-center justify-center gap-[var(--s-2)] py-[var(--s-2)] text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Instalador macOS (.dmg)</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Opción B: Servicio silencioso Python */}
+          <div className="rounded-[var(--r-xl)] border border-[var(--separator)] bg-[var(--bg-elevated)] p-[var(--s-4)] shadow-sm">
+            <div className="flex items-center gap-[var(--s-3)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-[var(--r-md)] bg-[var(--fill-tertiary)] text-[var(--text-2)]">
+                <Server className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="font-semibold text-[var(--text)]">Servicio en Segundo Plano</span>
+                <p className="text-xs text-[var(--text-2)]">
+                  Python 3.12 Standalone (Servidor / Servicio de Windows)
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-[var(--s-3)] text-xs text-[var(--text-2)] leading-relaxed">
+              Para servidores locales dedicados o PCs donde debe ejecutarse como servicio silencioso sin interfaz gráfica, con reconexión automática y arranque al encender el equipo.
+            </p>
+
+            <div className="mt-[var(--s-3)] grid grid-cols-1 sm:grid-cols-2 gap-[var(--s-2)]">
+              <a
+                href={AGENT_DOWNLOAD_ZIP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-secondary inline-flex items-center justify-center gap-[var(--s-2)] py-[var(--s-2)] text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Paquete Servicio (.zip)</span>
+              </a>
+              <a
+                href={AGENT_DOWNLOAD_EXE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ios-btn ios-btn-secondary inline-flex items-center justify-center gap-[var(--s-2)] py-[var(--s-2)] text-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>Ejecutable consola (.exe)</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </Sheet>
     </AppShell>
   );

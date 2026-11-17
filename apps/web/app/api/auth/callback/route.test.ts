@@ -157,10 +157,22 @@ describe('GET /api/auth/callback (Desktop OAuth Relay)', () => {
     const request = new Request(
       'http://localhost:3000/api/auth/callback?code=bad-code&source=desktop&target=http%3A%2F%2Flocalhost%3A5173',
     );
-
     const response = await GET(request);
     expect(response.status).toBe(307);
     const location = response.headers.get('location');
     expect(location).toBe('http://localhost:5173/?error=oauth_invalido');
   });
+
+  it('returns client bridge HTML for desktop when no code parameter is present', async () => {
+    const request = new Request(
+      'http://localhost:3000/api/auth/callback?source=desktop&target=sm-clock%3A%2F%2Fauth%2Fcallback',
+    );
+
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain('sm-clock://auth/callback');
+    expect(html).toContain('window.location.hash');
+  });
 });
+

@@ -13,8 +13,16 @@ const DEFAULT_ANON_KEY =
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(url?: string, anonKey?: string): SupabaseClient {
-  const finalUrl = url || localStorage.getItem('sm_supabase_url') || DEFAULT_URL;
-  const finalKey = anonKey || localStorage.getItem('sm_supabase_anon_key') || DEFAULT_ANON_KEY;
+  const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('sm_supabase_url') : null;
+  const validStoredUrl = storedUrl && !storedUrl.includes('tu-proyecto') ? storedUrl : null;
+  const finalUrl = url || validStoredUrl || DEFAULT_URL;
+
+  const storedKey = typeof window !== 'undefined' ? localStorage.getItem('sm_supabase_anon_key') : null;
+  const validStoredKey =
+    storedKey && !storedKey.includes('anon-key-placeholder') && !storedKey.includes('tu_supabase')
+      ? storedKey
+      : null;
+  const finalKey = anonKey || validStoredKey || DEFAULT_ANON_KEY;
 
   if (!supabaseInstance) {
     supabaseInstance = createClient(finalUrl, finalKey, {

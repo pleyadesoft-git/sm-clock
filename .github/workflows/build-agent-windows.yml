@@ -74,6 +74,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Electron Desktop Installer (Windows NSIS)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://gyqdmjvjmmsoepdnwzoy.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://gyqdmjvjmmsoepdnwzoy.supabase.co' }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5cWRtanZqbW1zb2VwZG53em95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ1ODk0MDgsImV4cCI6MjExMDE2NTQwOH0.dKSCNtLtRcjHQC4NP7lCE_Pbdam-9CIZLbJbwf2fMFw' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5cWRtanZqbW1zb2VwZG53em95Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ1ODk0MDgsImV4cCI6MjExMDE2NTQwOH0.dKSCNtLtRcjHQC4NP7lCE_Pbdam-9CIZLbJbwf2fMFw' }}
+          NEXT_PUBLIC_AUTH_REDIRECT_URL: ${{ secrets.NEXT_PUBLIC_AUTH_REDIRECT_URL || 'https://sm-clock.pleyadesoft.com/auth/callback' }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || 'https://sm-clock.pleyadesoft.com' }}
         run: pnpm --filter @sm-clock/desktop package:win
 
       - name: Upload Windows Desktop Installer Artifact
