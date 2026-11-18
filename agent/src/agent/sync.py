@@ -118,6 +118,7 @@ class CloudSyncClient:
         self.ultimo_latido_ts: str | None = None
         self.ultimo_drift_segundos: float = 0.0
         self.alerta_desvio_reloj: bool = False
+        self.last_alerts: dict[str, float] = {}
 
     def _execute_post(self, path: str, raw_body: str, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         if self.transport_post:
@@ -236,6 +237,52 @@ class CloudSyncClient:
             empleados_list = resp_data.get("empleados", [])
             return self.db.upsert_empleados(empleados_list)
         return 0
+
+    def report_error(
+        self,
+        tipo_error: str,
+        mensaje: str,
+        detalle: str | None = None,
+        fuente_id: str | None = None,
+        dispositivo: str | None = None,
+        force: bool = False,
+    ) -> bool:
+        """
+        Notifica una alerta de error del agente a la aplicación web (/api/v1/agente/alertas).
+        La aplicación envía un correo con el detalle a los Super-Admin y al Admin del tenant
+        utilizando la configuración SMTP del tenant.
+        Incluye un cooldown de 120s por tipo_error + fuente_id para no saturar bandejas.
+        """
+        key = f"{tipo_error}:{fuente_id or ''}"
+        now = time.time()
+        last = self.last_alerts.get(key, 0.0)
+        if not force and (now - last < 120.0):
+            logger.info("Alerta %s en periodo de enfriamiento (<120s), omitiendo reenvío", key)
+            return False
+
+        payload = {
+            "origen": "AGENTE_LOCAL",
+            "tipo_error": tipo_error,
+            "mensaje": mensaje,
+            "detalle": detalle,
+            "fuente_id": fuente_id,
+            "dispositivo": dispositivo,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        raw_body = json.dumps(payload, separators=(",", ":"))
+        headers = build_signed_headers(
+            agente_id=self.agente_id,
+            credencial_token=self.credencial_token,
+            raw_body=raw_body,
+        )
+        status_code, resp_data = self._execute_post("/api/v1/agente/alertas", raw_body, headers)
+        if status_code in (200, 201):
+            self.last_alerts[key] = now
+            logger.warning("Alerta de error enviada a la nube (%s): %s", tipo_error, mensaje)
+            return True
+        else:
+            logger.error("Fallo al enviar alerta de error (%s): HTTP %s - %s", tipo_error, status_code, resp_data)
+            return False
 
     def test_endpoint_latido(self, version: str = "1.0.0") -> dict[str, Any]:
         """Prueba de diagnóstico interactiva para /api/v1/agente/latido."""

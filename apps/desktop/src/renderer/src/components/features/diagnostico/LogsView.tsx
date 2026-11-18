@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronRight,
   Terminal,
+  Bell,
 } from 'lucide-react';
 
 export const LogsView: React.FC = () => {
@@ -30,6 +31,7 @@ export const LogsView: React.FC = () => {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [isSendingAlert, setIsSendingAlert] = useState<boolean>(false);
   const [expandedTracebacks, setExpandedTracebacks] = useState<Record<number, boolean>>({});
 
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -143,6 +145,23 @@ export const LogsView: React.FC = () => {
       } catch (err: unknown) {
         alert(err instanceof Error ? err.message : 'Error al limpiar logs');
       }
+    }
+  };
+
+  const handleSendTestAlert = async () => {
+    setIsSendingAlert(true);
+    try {
+      const res = await agentApi.reportAlert({
+        tipo_error: 'ALERTA_DIAGNOSTICO_ADMIN',
+        mensaje: 'Prueba de diagnóstico de alerta enviada desde la consola de logs del agente de escritorio.',
+        detalle: 'Verificación de entrega SMTP a Super-Admins y Administradores de Tenant.',
+        force: true,
+      });
+      alert(res.mensaje || 'Alerta enviada correctamente a los administradores');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error al enviar alerta a los administradores');
+    } finally {
+      setIsSendingAlert(false);
     }
   };
 
@@ -293,6 +312,18 @@ export const LogsView: React.FC = () => {
                 <span>Copiar</span>
               </>
             )}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs flex items-center gap-1.5 border-[var(--separator)] text-[var(--accent)] hover:bg-[var(--surface-2)] cursor-pointer"
+            onClick={handleSendTestAlert}
+            disabled={isSendingAlert}
+            title="Probar notificación de error por correo a Super-Admins y Administradores"
+          >
+            <Bell className={`w-3.5 h-3.5 ${isSendingAlert ? 'animate-pulse' : ''}`} />
+            <span>{isSendingAlert ? 'Enviando...' : 'Probar Alerta Email'}</span>
           </Button>
 
           <Button

@@ -200,4 +200,17 @@ export const agentApi = {
         server_url: serverUrl,
       }),
     }),
+
+  reportAlert: (payload: {
+    tipo_error: string;
+    mensaje: string;
+    detalle?: string | null;
+    dispositivo?: string | null;
+    fuente_id?: string | null;
+    force?: boolean;
+  }) =>
+    agentFetch<{ ok: boolean; mensaje: string }>('/api/alertas/reportar', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };

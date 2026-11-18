@@ -33,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { user, tenants, selectedTenantId, setSelectedTenantId, logout } = useAuth();
   const [sidecarRunning, setSidecarRunning] = useState<boolean>(true);
   const [restarting, setRestarting] = useState<boolean>(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState<boolean>(false);
   const [showQuitDialog, setShowQuitDialog] = useState<boolean>(false);
 
   const isMac = navigator.platform.toUpperCase().includes('MAC');
@@ -193,28 +194,31 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Badge para Admin de Empresa */}
           {user?.rol !== 'SUPER_ADMIN' && (
-            <div className="hidden lg:flex items-center gap-1 text-[11px] text-[var(--text-2)]">
-              <span>{user?.email}</span>
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-[var(--r-sm)] bg-[var(--surface-2)] text-[11px] text-[var(--text-2)] border border-[var(--separator)]">
+              <span className="font-semibold text-[var(--text)]">{user?.rol === 'ADMIN_EMPRESA' ? 'Admin' : 'Operador'}:</span>
+              <span className="max-w-[140px] truncate">{user?.email}</span>
             </div>
           )}
 
           <ThemeToggle />
 
+          {/* Botón explícito para cerrar sesión (mantiene el motor activo) */}
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            className="h-8 w-8 p-0 text-[var(--text-2)] hover:text-[var(--danger)]"
-            onClick={logout}
-            title="Cerrar sesión de usuario"
+            className="h-8 px-2.5 text-xs text-[var(--text)] border-[var(--separator)] hover:bg-[var(--surface-2)] flex items-center gap-1.5 cursor-pointer"
+            onClick={() => setShowLogoutDialog(true)}
+            title="Cerrar sesión actual (el agente sigue operando y leyendo marcas)"
           >
-            <LogOut className="w-4 h-4" />
+            <LogOut className="w-3.5 h-3.5 text-[var(--text-2)]" />
+            <span className="hidden sm:inline font-medium">Cerrar sesión</span>
           </Button>
 
           {/* Botón para apagar y cerrar totalmente el agente */}
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 w-8 p-0 text-[var(--text-2)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors"
+            className="h-8 w-8 p-0 text-[var(--text-2)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors cursor-pointer"
             onClick={() => setShowQuitDialog(true)}
             title="Cerrar totalmente el agente (apagar motor)"
           >
@@ -250,6 +254,19 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
+      {/* Diálogo de Confirmación: Cerrar Sesión (Mantiene Motor Activo) */}
+      <ConfirmDialog
+        open={showLogoutDialog}
+        onOpenChange={setShowLogoutDialog}
+        title="¿Cerrar sesión de administrador?"
+        description="Se cerrará únicamente tu sesión actual. El motor del agente continuará operando en segundo plano, leyendo checadas de los relojes y sincronizándolas con la nómina. La ventana quedará lista para que otro administrador inicie sesión."
+        confirmText="Cerrar sesión"
+        cancelText="Continuar conectado"
+        destructive={false}
+        onConfirm={logout}
+      />
+
+      {/* Diálogo de Confirmación: Apagar Motor y Cerrar Totalmente */}
       <ConfirmDialog
         open={showQuitDialog}
         onOpenChange={setShowQuitDialog}

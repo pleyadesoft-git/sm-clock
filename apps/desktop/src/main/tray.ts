@@ -71,6 +71,14 @@ export class AppTray {
           this.sidecar.restart().catch(() => {});
         },
       },
+      {
+        label: 'Cerrar sesión de usuario (mantener agente activo)',
+        click: () => {
+          this.mainWindow.show();
+          this.mainWindow.focus();
+          this.mainWindow.webContents.send('auth:triggerLogout');
+        },
+      },
       { type: 'separator' },
       {
         label: 'Salir y detener agente (Cerrar totalmente)',

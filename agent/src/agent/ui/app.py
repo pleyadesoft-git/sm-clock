@@ -363,6 +363,34 @@ def create_diagnostic_app(
             raise HTTPException(status_code=400, detail="Cliente de nube no configurado (agente sin credenciales)")
         return sync_client.test_endpoint_empleados()
 
+    @app.post("/api/alertas/reportar")
+    async def api_alertas_reportar(request: Request) -> dict[str, Any]:
+        require_admin_auth(request)
+        if not sync_client:
+            raise HTTPException(status_code=400, detail="Cliente de nube no configurado (agente sin credenciales)")
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        tipo_error = str(payload.get("tipo_error") or "PRUEBA_MANUAL_ADMIN")
+        mensaje = str(payload.get("mensaje") or "Prueba de alerta disparada manualmente desde el agente local")
+        detalle = payload.get("detalle")
+        dispositivo = payload.get("dispositivo")
+        fuente_id = payload.get("fuente_id")
+        force = bool(payload.get("force", True))
+        ok = sync_client.report_error(
+            tipo_error=tipo_error,
+            mensaje=mensaje,
+            detalle=detalle,
+            fuente_id=fuente_id,
+            dispositivo=dispositivo,
+            force=force,
+        )
+        return {
+            "ok": ok,
+            "mensaje": "Alerta enviada correctamente a la nube para notificación por correo" if ok else "No se pudo enviar la alerta o se encuentra en enfriamiento",
+        }
+
     # --- Acciones Generales y Layouts ---
 
     @app.post("/api/sync-now")

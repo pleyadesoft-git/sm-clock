@@ -27,6 +27,7 @@ export interface ElectronAPI {
   quitApp: () => Promise<void>;
   openExternal: (url: string) => Promise<void>;
   onDeepLink: (callback: (url: string) => void) => () => void;
+  onTriggerLogout: (callback: () => void) => () => void;
 }
 
 const electronAPI: ElectronAPI = {
@@ -63,6 +64,15 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on('auth:deepLink', handler);
     return () => {
       ipcRenderer.removeListener('auth:deepLink', handler);
+    };
+  },
+  onTriggerLogout: (callback) => {
+    const handler = () => {
+      callback();
+    };
+    ipcRenderer.on('auth:triggerLogout', handler);
+    return () => {
+      ipcRenderer.removeListener('auth:triggerLogout', handler);
     };
   },
 };

@@ -158,9 +158,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
+    // Escuchar cierre de sesión disparado desde la bandeja del sistema
+    const cleanupTriggerLogout = window.electronAPI?.onTriggerLogout?.(async () => {
+      await logout();
+    });
+
     return () => {
       subscription.unsubscribe();
       cleanupDeepLink?.();
+      cleanupTriggerLogout?.();
     };
   }, []);
 

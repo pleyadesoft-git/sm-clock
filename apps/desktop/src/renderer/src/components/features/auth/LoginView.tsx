@@ -149,6 +149,13 @@ export const LoginView: React.FC = () => {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          <div className="flex items-center gap-2 p-2.5 rounded-[var(--r-sm)] bg-[var(--success-bg)] text-[var(--success)] text-[11px] border border-[var(--success)]">
+            <span className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse shrink-0" />
+            <span>
+              <strong>Motor activo en segundo plano:</strong> La lectura y sincronización de checadas continúa operando.
+            </span>
+          </div>
+
           {loginError && (
             <div className="p-3 text-xs rounded-[var(--r-sm)] bg-[var(--danger-bg)] text-[var(--danger)] flex items-start gap-2 border border-[var(--danger)]">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />

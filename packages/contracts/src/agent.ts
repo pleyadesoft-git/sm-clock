@@ -266,6 +266,28 @@ export function resolveDeviceTimestampToUtc(
   };
 }
 
+export const AgentReportErrorSchema = z.object({
+  origen: z.string().trim().min(1).max(100).default('AGENTE_LOCAL'),
+  tipo_error: z.string().trim().min(1).max(100),
+  mensaje: z.string().trim().min(1).max(2000),
+  detalle: z.string().max(10000).optional().nullable(),
+  fuente_id: z.string().uuid().optional().nullable(),
+  dispositivo: z.string().max(150).optional().nullable(),
+  timestamp: z.string().optional().nullable(),
+});
+export type AgentReportError = z.infer<typeof AgentReportErrorSchema>;
+
+export const AgentReportErrorResponseSchema = z.object({
+  ok: z.boolean(),
+  notificados: z.number().int().min(0),
+  recipientes: z.array(z.string().email()),
+  servidor_ts_utc: z.string().datetime({ offset: true }),
+  mensaje: z.string().optional(),
+});
+export type AgentReportErrorResponse = z.infer<
+  typeof AgentReportErrorResponseSchema
+>;
+
 /**
  * Exporta los contratos del agente a JSON Schema estándar para validación cruzada con Python.
  */
@@ -284,6 +306,8 @@ export function getAgentContractsJsonSchema(): Record<string, unknown> {
       AgentSignedHeaders: z.toJSONSchema(AgentSignedHeadersSchema),
       AgentVerifyTechnicianRequest: z.toJSONSchema(AgentVerifyTechnicianRequestSchema),
       AgentVerifyTechnicianResponse: z.toJSONSchema(AgentVerifyTechnicianResponseSchema),
+      AgentReportError: z.toJSONSchema(AgentReportErrorSchema),
+      AgentReportErrorResponse: z.toJSONSchema(AgentReportErrorResponseSchema),
       ContpaqiLayoutConfig: z.toJSONSchema(ContpaqiLayoutConfigSchema),
       TressLayoutConfig: z.toJSONSchema(TressLayoutConfigSchema),
       Rh4000Config: z.toJSONSchema(Rh4000ConfigSchema),

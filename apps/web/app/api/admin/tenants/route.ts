@@ -302,6 +302,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 5. Inicializar configuración SMTP predeterminada para el nuevo tenant
+    try {
+      await supabase.from('configuracion_smtp').insert({
+        tenant_id: created.id,
+        usar_smtp_propio: false,
+        host: 'smtp.gmail.com',
+        puerto: 465,
+        seguridad: 'TLS',
+        usuario: '',
+        remitente_email: 'notificaciones@smclock.mx',
+        remitente_nombre: `${created.nombre_comercial} · Notificaciones`,
+        activo: true,
+      });
+    } catch {
+      // Continuar si ya existiera
+    }
+
     await recordAuditLog({
       tenantId: created.id,
       actorId: ctx.userId,

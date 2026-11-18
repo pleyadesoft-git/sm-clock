@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from typing import Any, Sequence
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -51,6 +52,14 @@ class AgentScheduler:
             return self.sync_client.flush_pending_batch()
         except Exception as exc:
             logger.error("Error al enviar lote a la nube: %s", exc)
+            try:
+                self.sync_client.report_error(
+                    tipo_error="FALLO_ENVIO_LOTE",
+                    mensaje=f"Error al enviar lote de checadas: {exc}",
+                    detalle=traceback.format_exc(),
+                )
+            except Exception:
+                pass
             return 0
 
     def job_heartbeat(self) -> bool:
@@ -63,12 +72,29 @@ class AgentScheduler:
                 }
                 for d in self.drivers
             ]
-            return self.sync_client.send_heartbeat(
+            ok = self.sync_client.send_heartbeat(
                 version=self.version,
                 fuentes_estado=fuentes_estado,
             )
+            if self.sync_client.alerta_desvio_reloj:
+                try:
+                    self.sync_client.report_error(
+                        tipo_error="DESVIO_RELOJ_AGENTE",
+                        mensaje=f"Desvío de reloj detectado: {self.sync_client.ultimo_drift_segundos:.1f}s (>120s respecto al servidor)",
+                    )
+                except Exception:
+                    pass
+            return ok
         except Exception as exc:
             logger.error("Error enviando latido: %s", exc)
+            try:
+                self.sync_client.report_error(
+                    tipo_error="FALLO_LATIDO",
+                    mensaje=f"Error enviando latido a la nube: {exc}",
+                    detalle=traceback.format_exc(),
+                )
+            except Exception:
+                pass
             return False
 
     def job_reconcile_all_clocks(self) -> dict[str, int]:
@@ -83,6 +109,16 @@ class AgentScheduler:
                 results[driver.fuente_id] = inserted
             except Exception as exc:
                 logger.error("Fallo al reconciliar reloj %s (%s): %s", driver.nombre, driver.fuente_id, exc)
+                try:
+                    self.sync_client.report_error(
+                        tipo_error="FALLO_CONEXION_RELOJ",
+                        mensaje=f"Fallo al conectar o reconciliar reloj {driver.nombre}: {exc}",
+                        detalle=traceback.format_exc(),
+                        fuente_id=driver.fuente_id,
+                        dispositivo=f"{driver.nombre} ({driver.tipo})",
+                    )
+                except Exception:
+                    pass
                 results[driver.fuente_id] = -1
         return results
 
@@ -91,6 +127,14 @@ class AgentScheduler:
             return self.sync_client.sync_employees()
         except Exception as exc:
             logger.error("Error al sincronizar empleados: %s", exc)
+            try:
+                self.sync_client.report_error(
+                    tipo_error="FALLO_SYNC_EMPLEADOS",
+                    mensaje=f"Error al sincronizar catálogo de empleados: {exc}",
+                    detalle=traceback.format_exc(),
+                )
+            except Exception:
+                pass
             return 0
 
     def start(self) -> None:

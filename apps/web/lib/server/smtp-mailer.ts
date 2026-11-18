@@ -420,6 +420,105 @@ export function buildPasswordRecoveryEmailTemplate(params: {
   return { subject, html, text };
 }
 
+export function buildAgentErrorReportEmailTemplate(params: {
+  agenteNombre: string;
+  tenantNombre: string;
+  tipoError: string;
+  mensaje: string;
+  detalle?: string | null;
+  dispositivo?: string | null;
+  timestampFormatted: string;
+}): { subject: string; html: string; text: string } {
+  const safeAgent = escapeHtml(params.agenteNombre);
+  const safeTenant = escapeHtml(params.tenantNombre);
+  const safeTipo = escapeHtml(params.tipoError);
+  const safeMensaje = escapeHtml(params.mensaje);
+  const safeDetalle = params.detalle ? escapeHtml(params.detalle) : null;
+  const safeDispositivo = params.dispositivo ? escapeHtml(params.dispositivo) : null;
+  const safeFecha = escapeHtml(params.timestampFormatted);
+
+  const subject = `🚨 Alerta de Error en Agente Local: [${params.tenantNombre}] ${params.tipoError}`;
+
+  const textLines = [
+    `ALERTA DE ERROR EN AGENTE LOCAL · SM CLOCK`,
+    `==========================================`,
+    `Empresa: ${params.tenantNombre}`,
+    `Agente: ${params.agenteNombre}`,
+  ];
+  if (params.dispositivo) {
+    textLines.push(`Dispositivo / Reloj: ${params.dispositivo}`);
+  }
+  textLines.push(
+    `Tipo de error: ${params.tipoError}`,
+    `Mensaje: ${params.mensaje}`,
+  );
+  if (params.detalle) {
+    textLines.push(`Detalle técnico:\n${params.detalle}`);
+  }
+  textLines.push(
+    '',
+    `Fecha y hora del evento: ${params.timestampFormatted} (America/Tijuana)`,
+    '',
+    'Este correo fue enviado automáticamente por el sistema de monitoreo de SM Clock.',
+    'Verifica la conexión del reloj biométrico y el estado del agente local.',
+  );
+  const text = textLines.join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="es-MX">
+<head><meta charset="UTF-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #F2F2F7; padding: 24px; color: #1C1C1E;">
+  <div style="max-width: 580px; margin: 0 auto; background: #FFFFFF; border-radius: 14px; padding: 28px; border: 1px solid #E5E5EA; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <span style="display: inline-block; background-color: #FF3B30; color: #FFFFFF; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; letter-spacing: 0.5px;">ALERTA DE ERROR</span>
+      <span style="font-size: 13px; color: #8E8E93; font-weight: 500;">SM Clock · Agente Local</span>
+    </div>
+    <h2 style="margin: 0 0 8px 0; color: #1C1C1E; font-size: 20px;">Fallo detectado en ${safeAgent}</h2>
+    <p style="margin: 0 0 20px 0; color: #636366; font-size: 14px;">
+      El agente local reportó una incidencia durante la captura o sincronización de checadas para <strong>${safeTenant}</strong>.
+    </p>
+
+    <div style="background-color: #F9F9FB; border-radius: 10px; border: 1px solid #E5E5EA; padding: 16px; margin-bottom: 20px;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <tr>
+          <td style="padding: 6px 0; color: #8E8E93; width: 140px;">Tipo de error:</td>
+          <td style="padding: 6px 0; color: #FF3B30; font-weight: 600;">${safeTipo}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #8E8E93;">Agente:</td>
+          <td style="padding: 6px 0; color: #1C1C1E; font-weight: 500;">${safeAgent}</td>
+        </tr>
+        ${safeDispositivo ? `<tr>
+          <td style="padding: 6px 0; color: #8E8E93;">Dispositivo:</td>
+          <td style="padding: 6px 0; color: #1C1C1E; font-weight: 500;">${safeDispositivo}</td>
+        </tr>` : ''}
+        <tr>
+          <td style="padding: 6px 0; color: #8E8E93;">Fecha y hora:</td>
+          <td style="padding: 6px 0; color: #1C1C1E;">${safeFecha} (Tijuana)</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; color: #8E8E93; vertical-align: top;">Descripción:</td>
+          <td style="padding: 6px 0; color: #1C1C1E; font-weight: 500;">${safeMensaje}</td>
+        </tr>
+      </table>
+    </div>
+
+    ${safeDetalle ? `
+    <div style="margin-bottom: 20px;">
+      <div style="font-size: 12px; font-weight: 600; color: #8E8E93; margin-bottom: 6px; text-transform: uppercase;">Detalle Técnico:</div>
+      <pre style="background: #1C1C1E; color: #34C759; padding: 12px; border-radius: 8px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; font-family: ui-monospace, Menlo, Monaco, Consolas, monospace; margin: 0;">${safeDetalle}</pre>
+    </div>` : ''}
+
+    <p style="font-size: 12px; color: #8E8E93; margin-top: 24px; border-top: 1px solid #E5E5EA; padding-top: 16px;">
+      Este aviso se generó utilizando la configuración SMTP asignada para <strong>${safeTenant}</strong>.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
 export async function sendSmtpTestEmail(params: {
   tenantId: string | null;
   to: string;

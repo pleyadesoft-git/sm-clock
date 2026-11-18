@@ -140,3 +140,61 @@ def test_scheduler_fault_isolation(tmp_path: Path) -> None:
     assert hb_ok is True
 
     db.close()
+
+
+def test_agent_error_alert_reporting_and_cooldown(tmp_path: Path) -> None:
+    db = AgentLocalDatabase(db_path=tmp_path / "test_alert.db")
+    captured_requests: list[dict[str, Any]] = []
+
+    def mock_alert_post(path: str, raw_body: str, headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
+        captured_requests.append({
+            "path": path,
+            "body": json.loads(raw_body),
+            "headers": headers,
+        })
+        return 200, {"ok": True, "notificados": 2}
+
+    client = CloudSyncClient(
+        db=db,
+        agente_id="11111111-0004-4000-8000-000000000001",
+        credencial_token="token_test_alert_12345",
+        transport_post=mock_alert_post,
+    )
+
+    # 1. Enviar primera alerta de error
+    sent = client.report_error(
+        tipo_error="FALLO_CONEXION_RELOJ",
+        mensaje="No se pudo contactar el reloj ZKTeco 192.168.1.100",
+        detalle="Timeout de 5000ms",
+        fuente_id="22222222-0001-4000-8000-000000000001",
+        dispositivo="Reloj Entrada",
+    )
+    assert sent is True
+    assert len(captured_requests) == 1
+    req = captured_requests[0]
+    assert req["path"] == "/api/v1/agente/alertas"
+    assert req["body"]["tipo_error"] == "FALLO_CONEXION_RELOJ"
+    assert req["body"]["mensaje"] == "No se pudo contactar el reloj ZKTeco 192.168.1.100"
+    assert "x-agent-signature" in req["headers"]
+
+    # 2. Segundo intento inmediato del mismo error debe ser omitido por cooldown (<120s)
+    second_sent = client.report_error(
+        tipo_error="FALLO_CONEXION_RELOJ",
+        mensaje="No se pudo contactar el reloj ZKTeco 192.168.1.100",
+        fuente_id="22222222-0001-4000-8000-000000000001",
+    )
+    assert second_sent is False
+    assert len(captured_requests) == 1
+
+    # 3. Forzar envío inmediato sí pasa
+    forced_sent = client.report_error(
+        tipo_error="FALLO_CONEXION_RELOJ",
+        mensaje="No se pudo contactar el reloj ZKTeco 192.168.1.100",
+        fuente_id="22222222-0001-4000-8000-000000000001",
+        force=True,
+    )
+    assert forced_sent is True
+    assert len(captured_requests) == 2
+
+    db.close()
+
