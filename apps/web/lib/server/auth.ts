@@ -231,13 +231,18 @@ export async function getAuthenticatedContext(options?: {
 
   // 1. Si el correo está en SUPER_ADMIN_BOOTSTRAP_EMAILS, tiene autorización exclusiva de SUPER_ADMIN
   if (isBootstrapSuperAdminEmail(normalizedEmail)) {
-    const bootstrapped = await claimBootstrapSuperAdminForUser({
-      userId: user.id,
-      email: normalizedEmail,
-      fullNameFallback,
-    });
-    rol = bootstrapped?.rol ?? 'SUPER_ADMIN';
-    tenantId = null;
+    if (user.app_metadata?.['rol'] === 'SUPER_ADMIN') {
+      rol = 'SUPER_ADMIN';
+      tenantId = null;
+    } else {
+      const bootstrapped = await claimBootstrapSuperAdminForUser({
+        userId: user.id,
+        email: normalizedEmail,
+        fullNameFallback,
+      });
+      rol = bootstrapped?.rol ?? 'SUPER_ADMIN';
+      tenantId = null;
+    }
   } else {
     // 2. Buscar perfil existente del usuario en su empresa (por ID o por correo)
     const { data: perfilById } = await adminClient

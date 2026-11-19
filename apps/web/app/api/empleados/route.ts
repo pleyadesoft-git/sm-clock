@@ -114,7 +114,18 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
-  const { data: rows, count, error } = await query.range(from, to);
+
+  const [
+    { data: rows, count, error },
+    { data: sucursales },
+  ] = await Promise.all([
+    query.range(from, to),
+    admin
+      .from('sucursales')
+      .select('id, clave, nombre, latitud, longitud, radio_geocerca_m')
+      .eq('tenant_id', tenantId)
+      .order('clave', { ascending: true }),
+  ]);
 
   if (error) {
     return NextResponse.json(
@@ -173,12 +184,6 @@ export async function GET(request: Request): Promise<NextResponse> {
       ? (signedMap.get(r.foto_path) ?? null)
       : null,
   }));
-
-  const { data: sucursales } = await admin
-    .from('sucursales')
-    .select('id, clave, nombre, latitud, longitud, radio_geocerca_m')
-    .eq('tenant_id', tenantId)
-    .order('clave', { ascending: true });
 
   return NextResponse.json(
     {

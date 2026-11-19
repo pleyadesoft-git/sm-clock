@@ -7,7 +7,6 @@ import {
 import {
   recordAuditLog,
   requireAuthenticatedUser,
-  resolveTenantIdForUser,
 } from '@/lib/server/auth';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -31,16 +30,28 @@ export async function GET(): Promise<NextResponse> {
   }
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user: sessionUser },
-  } = await supabase.auth.getUser();
-
   const admin = createSupabaseServiceClient();
-  const { data: perfil } = await admin
-    .from('perfiles_usuarios')
-    .select('nombre_completo, email, rol, auth_provider, ultimo_acceso_en')
-    .eq('id', auth.user.userId)
-    .maybeSingle();
+  const targetTenantId = auth.user.tenantId;
+
+  const [sessionUserRes, perfilRes, tenantRes] = await Promise.all([
+    supabase.auth.getUser(),
+    admin
+      .from('perfiles_usuarios')
+      .select('nombre_completo, email, rol, auth_provider, ultimo_acceso_en')
+      .eq('id', auth.user.userId)
+      .maybeSingle(),
+    targetTenantId
+      ? admin
+          .from('tenants')
+          .select('nombre_comercial, razon_social, logo_url')
+          .eq('id', targetTenantId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  const sessionUser = sessionUserRes.data?.user ?? null;
+  const perfil = perfilRes.data;
+  const tenant = tenantRes.data;
 
   const rawMeta = sessionUser?.user_metadata ?? {};
   const avatarCandidate =
@@ -72,20 +83,9 @@ export async function GET(): Promise<NextResponse> {
         ? 'GOOGLE'
         : 'EMAIL';
 
-  const resolvedTenantId = await resolveTenantIdForUser(auth.user);
-  let tenantNombre: string | null = null;
-  let tenantLogoUrl: string | null = null;
-
-  if (resolvedTenantId) {
-    const { data: tenant } = await admin
-      .from('tenants')
-      .select('nombre_comercial, razon_social, logo_url')
-      .eq('id', resolvedTenantId)
-      .maybeSingle();
-
-    tenantNombre = tenant?.nombre_comercial || tenant?.razon_social || null;
-    tenantLogoUrl = tenant?.logo_url || null;
-  }
+  const tenantNombre =
+    tenant?.nombre_comercial || tenant?.razon_social || null;
+  const tenantLogoUrl = tenant?.logo_url || null;
 
   return NextResponse.json({
     data: {

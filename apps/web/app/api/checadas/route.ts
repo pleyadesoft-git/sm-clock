@@ -67,72 +67,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     );
   }
 
-  const { data: tenantInfo } = await admin
-    .from('tenants')
-    .select('id, tenant_code, nombre_comercial, zona_horaria, estatus')
-    .eq('id', tenantId)
-    .single();
-
-  // Consultar sucursales del tenant
-  const { data: sucursalesRows } = await admin
-    .from('sucursales')
-    .select('id, clave, nombre, direccion, latitud, longitud, radio_geocerca_m')
-    .eq('tenant_id', tenantId);
-
-  const sucursalMap = new Map<
-    string,
-    {
-      id: string;
-      clave: string;
-      nombre: string;
-      direccion: string | null;
-      latitud: number | null;
-      longitud: number | null;
-      radio_geocerca_m: number;
-    }
-  >();
-  for (const s of sucursalesRows ?? []) {
-    sucursalMap.set(s.id, s);
-  }
-
-  // Consultar empleados del tenant para enriquecer nombres, departamentos y sucursal asignada
-  const { data: empleados } = await admin
-    .from('empleados')
-    .select(
-      'codigo_empleado, nombre_completo, departamento, puesto, estatus_empleado, sucursal_id',
-    )
-    .eq('tenant_id', tenantId);
-
-  const empMap = new Map<
-    string,
-    {
-      nombre_completo: string;
-      departamento: string | null;
-      puesto: string | null;
-      sucursal_id: string | null;
-    }
-  >();
-  for (const emp of empleados ?? []) {
-    empMap.set(emp.codigo_empleado, {
-      nombre_completo: emp.nombre_completo,
-      departamento: emp.departamento,
-      puesto: emp.puesto,
-      sucursal_id: emp.sucursal_id,
-    });
-  }
-
-  // Consultar fuentes y agentes del tenant
-  const { data: fuentes } = await admin
-    .from('fuentes_asistencia')
-    .select('id, nombre_ubicacion, marca, activo, ultima_conexion_exitosa, ultimo_error')
-    .eq('tenant_id', tenantId);
-
-  const { data: agentes } = await admin
-    .from('agentes')
-    .select('id, nombre, version, ultimo_latido, revocado_en')
-    .eq('tenant_id', tenantId)
-    .is('revocado_en', null);
-
   // Construir consulta paginada de checadas del tenant
   let checadasQuery = admin
     .from('checadas')
@@ -141,6 +75,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       { count: 'exact' },
     )
     .eq('tenant_id', tenantId);
+
   const ALLOWED_SORT_COLUMNS = [
     'ts_utc',
     'codigo_empleado',
@@ -174,16 +109,107 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
-  const { data: checadasRows, count, error } = await checadasQuery.range(
-    from,
-    to,
-  );
+
+  // KPIs en tiempo real (últimas 24h)
+  const since24hIso = new Date(Date.now() - 24 * 3600_000).toISOString();
+  const since1hIso = new Date(Date.now() - 3600_000).toISOString();
+
+  // Ejecutar en paralelo todas las consultas independientes
+  const [
+    { data: tenantInfo },
+    { data: sucursalesRows },
+    { data: fuentes },
+    { data: agentes },
+    { data: checadasRows, count, error },
+    { data: recentChecadas },
+    { data: activeEmployees },
+  ] = await Promise.all([
+    admin
+      .from('tenants')
+      .select('id, tenant_code, nombre_comercial, zona_horaria, estatus')
+      .eq('id', tenantId)
+      .single(),
+    admin
+      .from('sucursales')
+      .select('id, clave, nombre, direccion, latitud, longitud, radio_geocerca_m')
+      .eq('tenant_id', tenantId),
+    admin
+      .from('fuentes_asistencia')
+      .select('id, nombre_ubicacion, marca, activo, ultima_conexion_exitosa, ultimo_error')
+      .eq('tenant_id', tenantId),
+    admin
+      .from('agentes')
+      .select('id, nombre, version, ultimo_latido, revocado_en')
+      .eq('tenant_id', tenantId)
+      .is('revocado_en', null),
+    checadasQuery.range(from, to),
+    admin
+      .from('checadas')
+      .select('codigo_empleado, ts_utc, tipo_marca')
+      .eq('tenant_id', tenantId)
+      .gte('ts_utc', since24hIso),
+    admin
+      .from('empleados')
+      .select('codigo_empleado, departamento')
+      .eq('tenant_id', tenantId)
+      .eq('estatus_empleado', 'A'),
+  ]);
 
   if (error) {
     return NextResponse.json(
       { error: 'Error al consultar checadas' },
       { status: 500 },
     );
+  }
+
+  const sucursalMap = new Map<
+    string,
+    {
+      id: string;
+      clave: string;
+      nombre: string;
+      direccion: string | null;
+      latitud: number | null;
+      longitud: number | null;
+      radio_geocerca_m: number;
+    }
+  >();
+  for (const s of sucursalesRows ?? []) {
+    sucursalMap.set(s.id, s);
+  }
+
+  // Consultar únicamente los empleados presentes en la página actual de checadas
+  const targetEmployeeCodes = [
+    ...new Set((checadasRows ?? []).map((r) => r.codigo_empleado).filter(Boolean)),
+  ];
+
+  const empMap = new Map<
+    string,
+    {
+      nombre_completo: string;
+      departamento: string | null;
+      puesto: string | null;
+      sucursal_id: string | null;
+    }
+  >();
+
+  if (targetEmployeeCodes.length > 0) {
+    const { data: empleados } = await admin
+      .from('empleados')
+      .select(
+        'codigo_empleado, nombre_completo, departamento, puesto, estatus_empleado, sucursal_id',
+      )
+      .eq('tenant_id', tenantId)
+      .in('codigo_empleado', targetEmployeeCodes);
+
+    for (const emp of empleados ?? []) {
+      empMap.set(emp.codigo_empleado, {
+        nombre_completo: emp.nombre_completo,
+        departamento: emp.departamento,
+        puesto: emp.puesto,
+        sucursal_id: emp.sucursal_id,
+      });
+    }
   }
 
   const enrichedRows = (checadasRows ?? []).map((row) => {
@@ -199,16 +225,6 @@ export async function GET(request: Request): Promise<NextResponse> {
       sucursal_asignada: sucursalAsignada,
     };
   });
-
-  // KPIs en tiempo real (últimas 24h)
-  const since24hIso = new Date(Date.now() - 24 * 3600_000).toISOString();
-  const since1hIso = new Date(Date.now() - 3600_000).toISOString();
-
-  const { data: recentChecadas } = await admin
-    .from('checadas')
-    .select('codigo_empleado, ts_utc, tipo_marca')
-    .eq('tenant_id', tenantId)
-    .gte('ts_utc', since24hIso);
 
   const uniquePresentCodes = new Set<string>();
   let checadasUltimaHora = 0;
@@ -252,9 +268,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     }
   }
 
-  const activeEmployeesCount = (empleados ?? []).filter(
-    (e) => e.estatus_empleado === 'A',
-  ).length;
+  const activeEmployeesCount = activeEmployees?.length ?? 0;
   const presentesHoy = uniquePresentCodes.size;
   const faltasHoy = Math.max(0, activeEmployeesCount - presentesHoy);
 
@@ -273,8 +287,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   // Serie por departamento
   const deptCounts = new Map<string, { present: number; total: number }>();
-  for (const emp of empleados ?? []) {
-    if (emp.estatus_empleado !== 'A') continue;
+  for (const emp of activeEmployees ?? []) {
     const dept = emp.departamento ?? 'General';
     const curr = deptCounts.get(dept) ?? { present: 0, total: 0 };
     curr.total += 1;

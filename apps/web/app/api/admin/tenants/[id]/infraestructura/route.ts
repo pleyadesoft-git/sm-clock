@@ -78,34 +78,20 @@ export async function GET(
     const tenantId = parsedParams.data.id;
     const supabase = createSupabaseAdminClient();
 
-    const { data: tenant, error: tenantError } = await supabase
-      .from('tenants')
-      .select(
-        'id, tenant_code, nombre_comercial, razon_social, zona_horaria, contacto_nombre, contacto_email, contacto_telefono, correo_facturacion',
-      )
-      .eq('id', tenantId)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (tenantError) {
-      return NextResponse.json(
-        { error: 'Error al consultar la empresa' },
-        { status: 500 },
-      );
-    }
-
-    if (!tenant) {
-      return NextResponse.json(
-        { error: 'Empresa no encontrada' },
-        { status: 404 },
-      );
-    }
-
     const [
+      { data: tenant, error: tenantError },
       { data: sucursales, error: sucError },
       { data: fuentes, error: fuentesError },
       { data: admins, error: adminsError },
     ] = await Promise.all([
+      supabase
+        .from('tenants')
+        .select(
+          'id, tenant_code, nombre_comercial, razon_social, zona_horaria, contacto_nombre, contacto_email, contacto_telefono, correo_facturacion',
+        )
+        .eq('id', tenantId)
+        .is('deleted_at', null)
+        .maybeSingle(),
       supabase
         .from('sucursales')
         .select('id, clave, nombre, direccion, activa, created_at')
@@ -128,6 +114,20 @@ export async function GET(
         .is('deleted_at', null)
         .order('created_at', { ascending: true }),
     ]);
+
+    if (tenantError) {
+      return NextResponse.json(
+        { error: 'Error al consultar la empresa' },
+        { status: 500 },
+      );
+    }
+
+    if (!tenant) {
+      return NextResponse.json(
+        { error: 'Empresa no encontrada' },
+        { status: 404 },
+      );
+    }
 
     if (sucError || fuentesError || adminsError) {
       return NextResponse.json(
