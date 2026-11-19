@@ -42,7 +42,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { data: invite, error: inviteError } = await admin
     .from('invitaciones_usuarios')
-    .select('id, tenant_id, email, nombre_completo, rol, estatus, expira_en')
+    .select('id, tenant_id, sucursal_id, email, nombre_completo, rol, estatus, expira_en')
     .eq('token_hash', tokenHash)
     .maybeSingle();
 
@@ -72,6 +72,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // Crear o actualizar usuario en Supabase Auth con confirmación de correo inmediata
   let userId: string | null = null;
+  let hasGoogleIdentity = false;
   const { data: createdAuth, error: createAuthError } =
     await admin.auth.admin.createUser({
       email: normalizedEmail,
@@ -89,7 +90,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (createdAuth?.user) {
     userId = createdAuth.user.id;
   } else if (createAuthError) {
-    // Si el correo ya existe en auth.users (por ej. intento previo), localizar y actualizar
+    // Si el correo ya existe en auth.users (por ej. admin inicial o intento previo), localizar y actualizar
     const { data: listData } = await admin.auth.admin.listUsers({
       page: 1,
       perPage: 200,
@@ -106,13 +107,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     userId = existingAuthUser.id;
+    hasGoogleIdentity = Boolean(
+      existingAuthUser.identities?.some((idn) => idn.provider === 'google'),
+    );
     await admin.auth.admin.updateUserById(userId, {
       password: parsed.data.password,
       email_confirm: true,
       user_metadata: {
+        ...existingAuthUser.user_metadata,
         full_name: parsed.data.nombre_completo,
       },
       app_metadata: {
+        ...existingAuthUser.app_metadata,
         rol: invite.rol,
         tenant_id: invite.tenant_id,
       },
@@ -130,10 +136,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     {
       id: userId,
       tenant_id: invite.tenant_id,
+      sucursal_id: invite.sucursal_id ?? null,
       nombre_completo: parsed.data.nombre_completo,
       email: normalizedEmail,
       rol: invite.rol,
-      auth_provider: 'BOTH',
+      auth_provider: hasGoogleIdentity ? 'BOTH' : 'EMAIL',
       activo: true,
       ultimo_acceso_en: nowIso,
     },

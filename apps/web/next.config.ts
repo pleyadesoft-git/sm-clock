@@ -17,7 +17,7 @@ const securityHeaders = [
   },
   {
     key: 'Permissions-Policy',
-    value: 'camera=(self), microphone=(), geolocation=()',
+    value: 'camera=(self), microphone=(), geolocation=(self)',
   },
   {
     key: 'Content-Security-Policy',
@@ -25,7 +25,8 @@ const securityHeaders = [
       "default-src 'self'",
       `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com",
+      "img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://*.openstreetmap.org",
+      "frame-src 'self' https://www.openstreetmap.org",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:*",
       "font-src 'self' data:",
       "worker-src 'self' blob:",

@@ -28,6 +28,12 @@ export const InviteUserRequestSchema = z.object({
       'El nombre del invitado contiene caracteres o código no permitido',
   }),
   rol: TenantUserRoleSchema,
+  sucursal_id: z
+    .string({
+      error: 'Debes seleccionar una sucursal obligatoriamente',
+    })
+    .trim()
+    .uuid('Selecciona una sucursal válida'),
 });
 
 export type InviteUserRequest = z.infer<typeof InviteUserRequestSchema>;
@@ -36,6 +42,7 @@ export const UpdateTenantUserRequestSchema = z
   .object({
     rol: TenantUserRoleSchema.optional(),
     activo: z.boolean().optional(),
+    sucursal_id: z.string().trim().uuid('Selecciona una sucursal válida').optional(),
     nombre_completo: safeSanitizedTextSchema({
       min: 2,
       max: 150,
@@ -49,6 +56,7 @@ export const UpdateTenantUserRequestSchema = z
     (data) =>
       data.rol !== undefined ||
       data.activo !== undefined ||
+      data.sucursal_id !== undefined ||
       data.nombre_completo !== undefined,
     { message: 'Debes especificar al menos un campo a actualizar' },
   );
@@ -80,6 +88,33 @@ export const AcceptInvitationPasswordRequestSchema = z.object({
 
 export type AcceptInvitationPasswordRequest = z.infer<
   typeof AcceptInvitationPasswordRequestSchema
+>;
+
+export const AcceptInvitationPasswordFormSchema = z
+  .object({
+    nombre_completo: safeSanitizedTextSchema({
+      min: 2,
+      max: 150,
+      minMessage: 'Ingresa tu nombre completo',
+      maxMessage: 'El nombre completo no puede exceder 150 caracteres',
+      injectionMessage:
+        'El nombre completo contiene caracteres o código no permitido',
+    }),
+    password: z
+      .string()
+      .min(8, 'La contraseña debe tener al menos 8 caracteres')
+      .max(128, 'La contraseña excede la longitud permitida'),
+    confirm_password: z
+      .string()
+      .min(1, 'Confirma tu contraseña'),
+  })
+  .refine((data) => data.password === data.confirm_password, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirm_password'],
+  });
+
+export type AcceptInvitationPasswordFormValues = z.infer<
+  typeof AcceptInvitationPasswordFormSchema
 >;
 
 export const AcceptInvitationOAuthRequestSchema = z.object({
@@ -222,6 +257,8 @@ export type TenantUserRow = {
   nombre_completo: string;
   email: string;
   rol: z.infer<typeof UserRoleSchema>;
+  sucursal_id?: string | null;
+  sucursal_nombre?: string | null;
   estatus: 'ACTIVO' | 'INACTIVO' | 'PENDIENTE' | 'REVOCADA' | 'EXPIRADA';
   auth_provider: 'GOOGLE' | 'EMAIL' | 'BOTH' | 'INVITACION';
   created_at: string;

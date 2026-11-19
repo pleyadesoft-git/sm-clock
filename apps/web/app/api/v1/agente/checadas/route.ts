@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { AgentChecadasBatchSchema } from '@sm-clock/contracts';
 import { authenticateAgentRequest } from '@/lib/server/agent-auth';
+import { processPunchNotificationsForBatch } from '@/lib/server/mensajes-checadas';
 import { broadcastTenantEvent } from '@/lib/server/realtime-broadcast';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
@@ -59,7 +60,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       onConflict: 'tenant_id,fuente_id,codigo_empleado,ts_utc',
       ignoreDuplicates: true,
     })
-    .select('id, fuente_id, ts_utc');
+    .select(
+      'id, fuente_id, codigo_empleado, ts_utc, ts_dispositivo_local, tipo_marca',
+    );
 
   if (insertError) {
     return NextResponse.json(
@@ -77,6 +80,32 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const insertedCount = insertedRows?.length ?? 0;
 
+  // Evaluar avisos al empleado (Check-In / Check-Out) y fallbacks SMTP/WhatsApp
+  let notificacionesDisparadas: Awaited<
+    ReturnType<typeof processPunchNotificationsForBatch>
+  > = [];
+  if (insertedCount > 0 && insertedRows) {
+    try {
+      notificacionesDisparadas = await processPunchNotificationsForBatch({
+        tenantId,
+        punches: insertedRows.map((row) => ({
+          checada_id: row.id,
+          fuente_id: row.fuente_id,
+          codigo_empleado: row.codigo_empleado,
+          ts_utc: row.ts_utc,
+          ts_dispositivo_local: row.ts_dispositivo_local,
+          tipo_marca:
+            row.tipo_marca === 'ENTRADA' || row.tipo_marca === 'SALIDA'
+              ? row.tipo_marca
+              : 'CHECADA',
+        })),
+      });
+    } catch {
+      // No bloquear la ingesta de checadas si falla el procesador de notificaciones
+      notificacionesDisparadas = [];
+    }
+  }
+
   // Emitir evento ligero (sin PII) al canal privado de Supabase Realtime Broadcast
   if (insertedCount > 0) {
     await broadcastTenantEvent(tenantId, 'nueva_checada', {
@@ -92,5 +121,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     recibidas: rowsToInsert.length,
     insertadas: insertedCount,
     duplicadas_ignoradas: rowsToInsert.length - insertedCount,
+    notificaciones_disparadas: notificacionesDisparadas,
+    servidor_ts_utc: new Date().toISOString(),
   });
 }

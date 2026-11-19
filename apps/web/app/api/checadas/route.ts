@@ -73,21 +73,51 @@ export async function GET(request: Request): Promise<NextResponse> {
     .eq('id', tenantId)
     .single();
 
-  // Consultar empleados del tenant para enriquecer nombres y departamentos
+  // Consultar sucursales del tenant
+  const { data: sucursalesRows } = await admin
+    .from('sucursales')
+    .select('id, clave, nombre, direccion, latitud, longitud, radio_geocerca_m')
+    .eq('tenant_id', tenantId);
+
+  const sucursalMap = new Map<
+    string,
+    {
+      id: string;
+      clave: string;
+      nombre: string;
+      direccion: string | null;
+      latitud: number | null;
+      longitud: number | null;
+      radio_geocerca_m: number;
+    }
+  >();
+  for (const s of sucursalesRows ?? []) {
+    sucursalMap.set(s.id, s);
+  }
+
+  // Consultar empleados del tenant para enriquecer nombres, departamentos y sucursal asignada
   const { data: empleados } = await admin
     .from('empleados')
-    .select('codigo_empleado, nombre_completo, departamento, puesto, estatus_empleado')
+    .select(
+      'codigo_empleado, nombre_completo, departamento, puesto, estatus_empleado, sucursal_id',
+    )
     .eq('tenant_id', tenantId);
 
   const empMap = new Map<
     string,
-    { nombre_completo: string; departamento: string | null; puesto: string | null }
+    {
+      nombre_completo: string;
+      departamento: string | null;
+      puesto: string | null;
+      sucursal_id: string | null;
+    }
   >();
   for (const emp of empleados ?? []) {
     empMap.set(emp.codigo_empleado, {
       nombre_completo: emp.nombre_completo,
       departamento: emp.departamento,
       puesto: emp.puesto,
+      sucursal_id: emp.sucursal_id,
     });
   }
 
@@ -107,16 +137,17 @@ export async function GET(request: Request): Promise<NextResponse> {
   let checadasQuery = admin
     .from('checadas')
     .select(
-      'id, tenant_id, fuente_id, codigo_empleado, ts_utc, ts_dispositivo_local, ambigua, tipo_marca, tipo_verificacion, agente_id, created_at, fuentes_asistencia(nombre_ubicacion, marca)',
+      'id, tenant_id, fuente_id, sucursal_id, codigo_empleado, ts_utc, ts_dispositivo_local, ambigua, tipo_marca, tipo_verificacion, latitud, longitud, precision_m, distancia_sucursal_m, dentro_geocerca, agente_id, created_at, fuentes_asistencia(nombre_ubicacion, marca)',
       { count: 'exact' },
     )
-    .eq('tenant_id', tenantId)
+    .eq('tenant_id', tenantId);
   const ALLOWED_SORT_COLUMNS = [
     'ts_utc',
     'codigo_empleado',
     'tipo_marca',
     'tipo_verificacion',
     'ts_dispositivo_local',
+    'distancia_sucursal_m',
     'created_at',
   ] as const;
 
@@ -157,10 +188,15 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const enrichedRows = (checadasRows ?? []).map((row) => {
     const emp = empMap.get(row.codigo_empleado);
+    const effectiveSucursalId = row.sucursal_id ?? emp?.sucursal_id ?? null;
+    const sucursalAsignada = effectiveSucursalId
+      ? (sucursalMap.get(effectiveSucursalId) ?? null)
+      : null;
     return {
       ...row,
       nombre_empleado: emp?.nombre_completo ?? 'Empleado no registrado',
       departamento: emp?.departamento ?? 'Sin departamento',
+      sucursal_asignada: sucursalAsignada,
     };
   });
 

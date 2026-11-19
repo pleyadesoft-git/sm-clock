@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import {
+  buildAdminTenantNotificationEmail,
   buildInvitationEmailTemplate,
   buildPasswordRecoveryEmailTemplate,
 } from './smtp-mailer';
@@ -46,6 +47,23 @@ describe('smtp-mailer templates', () => {
     expect(recovery.html).not.toContain('<script>');
     expect(recovery.html).toContain('&lt;script&gt;');
     expect(recovery.html).toContain('token_hash=abc123');
+  });
+
+  it('builds escaped Super-Admin tenant notification email preserving line breaks', () => {
+    const notif = buildAdminTenantNotificationEmail({
+      tenantNombre: 'Planta Tijuana & Sur',
+      tenantCode: 'TIJ-001',
+      destinatarioNombre: 'Laura <Admin>',
+      asunto: 'Revisión de relojes checadores',
+      mensaje: 'Línea 1\nRevisar <terminal> en caseta.',
+      remitenteNombre: 'Soporte Central',
+    });
+
+    expect(notif.subject).toBe('[SM Clock · TIJ-001] Revisión de relojes checadores');
+    expect(notif.html).toContain('Laura &lt;Admin&gt;');
+    expect(notif.html).toContain('Planta Tijuana &amp; Sur');
+    expect(notif.html).toContain('Línea 1<br />Revisar &lt;terminal&gt; en caseta.');
+    expect(notif.text).toContain('Soporte Central');
   });
 });
 

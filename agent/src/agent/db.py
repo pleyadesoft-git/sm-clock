@@ -43,6 +43,8 @@ class LocalClockRecord:
     ultimo_error: str | None
     created_at: str
     updated_at: str
+    sucursal_id: str | None = None
+    clave: str | None = None
 
 
 class AgentLocalDatabase:
@@ -145,10 +147,20 @@ class AgentLocalDatabase:
                 ultimo_ping TEXT,
                 ultimo_error TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sucursal_id TEXT,
+                clave TEXT
             );
             """
         )
+        try:
+            cur.execute("ALTER TABLE fuentes_locales ADD COLUMN sucursal_id TEXT;")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cur.execute("ALTER TABLE fuentes_locales ADD COLUMN clave TEXT;")
+        except sqlite3.OperationalError:
+            pass
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS sesiones_auth (
@@ -158,6 +170,27 @@ class AgentLocalDatabase:
                 rol TEXT NOT NULL,
                 tenant_id TEXT,
                 expira_en TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notificaciones_disparadas_local (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mensaje_id TEXT NOT NULL,
+                codigo_empleado TEXT NOT NULL,
+                nombre_empleado TEXT NOT NULL,
+                tipo_marca TEXT NOT NULL DEFAULT 'CHECADA',
+                titulo TEXT NOT NULL,
+                mensaje TEXT NOT NULL,
+                texto_voz TEXT NOT NULL,
+                reproducir_audio INTEGER NOT NULL DEFAULT 1,
+                canal_utilizado TEXT NOT NULL DEFAULT 'AGENTE_AUDIO_VISUAL',
+                estatus_entrega TEXT NOT NULL DEFAULT 'ENTREGADO_DISPOSITIVO',
+                whatsapp_web_url TEXT,
+                ts_utc TEXT NOT NULL,
+                leida INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             """
@@ -450,6 +483,8 @@ class AgentLocalDatabase:
                 ultimo_error=str(r["ultimo_error"]) if r["ultimo_error"] is not None else None,
                 created_at=str(r["created_at"]),
                 updated_at=str(r["updated_at"]),
+                sucursal_id=str(r["sucursal_id"]) if "sucursal_id" in r.keys() and r["sucursal_id"] is not None else None,
+                clave=str(r["clave"]) if "clave" in r.keys() and r["clave"] is not None else None,
             )
             for r in rows
         ]
@@ -476,6 +511,8 @@ class AgentLocalDatabase:
             ultimo_error=str(row["ultimo_error"]) if row["ultimo_error"] is not None else None,
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+            sucursal_id=str(row["sucursal_id"]) if "sucursal_id" in row.keys() and row["sucursal_id"] is not None else None,
+            clave=str(row["clave"]) if "clave" in row.keys() and row["clave"] is not None else None,
         )
 
     def upsert_fuente_local(
@@ -490,6 +527,8 @@ class AgentLocalDatabase:
         usuario: str | None = None,
         password_cifrada: str | None = None,
         activo: bool = True,
+        sucursal_id: str | None = None,
+        clave: str | None = None,
     ) -> str:
         cur = self._conn.cursor()
         clean_id = clock_id.strip()
@@ -499,12 +538,16 @@ class AgentLocalDatabase:
             existing = self.get_fuente_local(clean_id)
             if existing:
                 password_cifrada = existing.password_cifrada
+                if sucursal_id is None:
+                    sucursal_id = existing.sucursal_id
+                if clave is None:
+                    clave = existing.clave
 
         cur.execute(
             """
             INSERT INTO fuentes_locales (
-                id, nombre, tipo, ip, puerto, comm_key, usuario, password_cifrada, activo, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                id, nombre, tipo, ip, puerto, comm_key, usuario, password_cifrada, activo, sucursal_id, clave, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             ON CONFLICT(id) DO UPDATE SET
                 nombre = excluded.nombre,
                 tipo = excluded.tipo,
@@ -514,6 +557,8 @@ class AgentLocalDatabase:
                 usuario = excluded.usuario,
                 password_cifrada = excluded.password_cifrada,
                 activo = excluded.activo,
+                sucursal_id = coalesce(excluded.sucursal_id, fuentes_locales.sucursal_id),
+                clave = coalesce(excluded.clave, fuentes_locales.clave),
                 updated_at = excluded.updated_at;
             """,
             (
@@ -526,6 +571,8 @@ class AgentLocalDatabase:
                 usuario.strip() if usuario else None,
                 password_cifrada,
                 1 if activo else 0,
+                sucursal_id.strip() if sucursal_id else None,
+                clave.strip() if clave else None,
             ),
         )
         self._conn.commit()
@@ -632,6 +679,121 @@ class AgentLocalDatabase:
 
     def set_emergency_pin(self, new_pin: str) -> None:
         self.set_config("pin_emergencia", new_pin.strip())
+
+    def record_triggered_notification(
+        self,
+        *,
+        mensaje_id: str,
+        codigo_empleado: str,
+        nombre_empleado: str,
+        tipo_marca: str,
+        titulo: str,
+        mensaje: str,
+        texto_voz: str,
+        reproducir_audio: bool = True,
+        canal_utilizado: str = "AGENTE_AUDIO_VISUAL",
+        estatus_entrega: str = "ENTREGADO_DISPOSITIVO",
+        whatsapp_web_url: str | None = None,
+        ts_utc: str | None = None,
+    ) -> int:
+        from datetime import datetime, timezone
+
+        now_iso = ts_utc or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cur = self._conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO notificaciones_disparadas_local (
+                mensaje_id,
+                codigo_empleado,
+                nombre_empleado,
+                tipo_marca,
+                titulo,
+                mensaje,
+                texto_voz,
+                reproducir_audio,
+                canal_utilizado,
+                estatus_entrega,
+                whatsapp_web_url,
+                ts_utc,
+                leida
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0);
+            """,
+            (
+                mensaje_id.strip(),
+                codigo_empleado.strip(),
+                nombre_empleado.strip(),
+                tipo_marca.strip(),
+                titulo.strip(),
+                mensaje.strip(),
+                texto_voz.strip(),
+                1 if reproducir_audio else 0,
+                canal_utilizado.strip(),
+                estatus_entrega.strip(),
+                whatsapp_web_url,
+                now_iso,
+            ),
+        )
+        self._conn.commit()
+        return int(cur.lastrowid or 0)
+
+    def list_recent_notifications(
+        self, limit: int = 25, only_unread: bool = False
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(100, limit))
+        cur = self._conn.cursor()
+        if only_unread:
+            rows = cur.execute(
+                """
+                SELECT * FROM notificaciones_disparadas_local
+                WHERE leida = 0
+                ORDER BY id DESC
+                LIMIT ?;
+                """,
+                (safe_limit,),
+            ).fetchall()
+        else:
+            rows = cur.execute(
+                """
+                SELECT * FROM notificaciones_disparadas_local
+                ORDER BY id DESC
+                LIMIT ?;
+                """,
+                (safe_limit,),
+            ).fetchall()
+
+        return [
+            {
+                "id": int(r["id"]),
+                "mensaje_id": str(r["mensaje_id"]),
+                "codigo_empleado": str(r["codigo_empleado"]),
+                "nombre_empleado": str(r["nombre_empleado"]),
+                "tipo_marca": str(r["tipo_marca"]),
+                "titulo": str(r["titulo"]),
+                "mensaje": str(r["mensaje"]),
+                "texto_voz": str(r["texto_voz"]),
+                "reproducir_audio": bool(r["reproducir_audio"]),
+                "canal_utilizado": str(r["canal_utilizado"]),
+                "estatus_entrega": str(r["estatus_entrega"]),
+                "whatsapp_web_url": (
+                    str(r["whatsapp_web_url"])
+                    if r["whatsapp_web_url"] is not None
+                    else None
+                ),
+                "ts_utc": str(r["ts_utc"]),
+                "leida": bool(r["leida"]),
+                "created_at": str(r["created_at"]),
+            }
+            for r in rows
+        ]
+
+    def mark_notification_read(self, notif_id: int) -> bool:
+        cur = self._conn.cursor()
+        cur.execute(
+            "UPDATE notificaciones_disparadas_local SET leida = 1 WHERE id = ?;",
+            (int(notif_id),),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def close(self) -> None:
         self._conn.close()

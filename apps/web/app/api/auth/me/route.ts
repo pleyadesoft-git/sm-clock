@@ -4,7 +4,11 @@ import {
   sanitizeTextInput,
   UpdateOwnProfileRequestSchema,
 } from '@sm-clock/contracts';
-import { recordAuditLog, requireAuthenticatedUser } from '@/lib/server/auth';
+import {
+  recordAuditLog,
+  requireAuthenticatedUser,
+  resolveTenantIdForUser,
+} from '@/lib/server/auth';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -68,6 +72,21 @@ export async function GET(): Promise<NextResponse> {
         ? 'GOOGLE'
         : 'EMAIL';
 
+  const resolvedTenantId = await resolveTenantIdForUser(auth.user);
+  let tenantNombre: string | null = null;
+  let tenantLogoUrl: string | null = null;
+
+  if (resolvedTenantId) {
+    const { data: tenant } = await admin
+      .from('tenants')
+      .select('nombre_comercial, razon_social, logo_url')
+      .eq('id', resolvedTenantId)
+      .maybeSingle();
+
+    tenantNombre = tenant?.nombre_comercial || tenant?.razon_social || null;
+    tenantLogoUrl = tenant?.logo_url || null;
+  }
+
   return NextResponse.json({
     data: {
       userId: auth.user.userId,
@@ -75,6 +94,8 @@ export async function GET(): Promise<NextResponse> {
       nombreCompleto,
       rol: auth.user.rol,
       tenantId: auth.user.tenantId,
+      tenantNombre,
+      tenantLogoUrl,
       authProvider,
       avatarUrl: avatarCandidate,
       aal: auth.user.aal,
@@ -108,6 +129,7 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   const normalizedEmail = parsed.data.email.toLowerCase();
   const nombreCompleto = parsed.data.nombre_completo;
+  const currentPassword = parsed.data.current_password;
   const newPassword = parsed.data.password;
 
   const admin = createSupabaseServiceClient();
@@ -117,6 +139,35 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     .select('id, email, auth_provider')
     .eq('id', auth.user.userId)
     .maybeSingle();
+
+  const prevProvider = currentPerfil?.auth_provider ?? 'EMAIL';
+  const isGoogleOnly = prevProvider === 'GOOGLE';
+
+  if (newPassword && !isGoogleOnly) {
+    if (!currentPassword) {
+      return NextResponse.json(
+        {
+          error:
+            'Debes ingresar tu contraseña actual para poder cambiar tu contraseña.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const verifier = createSupabaseServiceClient();
+    const { data: verifyData, error: verifyError } =
+      await verifier.auth.signInWithPassword({
+        email: auth.user.email,
+        password: currentPassword,
+      });
+
+    if (verifyError || !verifyData.user) {
+      return NextResponse.json(
+        { error: 'La contraseña actual es incorrecta.' },
+        { status: 400 },
+      );
+    }
+  }
 
   if (normalizedEmail !== auth.user.email.toLowerCase()) {
     const { data: conflict } = await admin
@@ -167,7 +218,6 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  const prevProvider = currentPerfil?.auth_provider ?? 'EMAIL';
   const nextProvider = newPassword
     ? prevProvider === 'GOOGLE'
       ? 'BOTH'

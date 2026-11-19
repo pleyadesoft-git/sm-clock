@@ -129,10 +129,61 @@ export interface EnrollResponse {
   mensaje?: string;
 }
 
+export interface TriggeredNotificationItem {
+  id: number;
+  mensaje_id: string;
+  codigo_empleado: string;
+  nombre_empleado: string;
+  tipo_marca: 'ENTRADA' | 'SALIDA' | 'CHECADA';
+  titulo: string;
+  mensaje: string;
+  texto_voz: string;
+  reproducir_audio: boolean;
+  canal_utilizado: string;
+  estatus_entrega: string;
+  whatsapp_web_url?: string | null;
+  ts_utc: string;
+  leida: boolean;
+  created_at: string;
+}
+
+export interface RecentNotificationsResponse {
+  ok: boolean;
+  no_leidas_count: number;
+  notificaciones: TriggeredNotificationItem[];
+}
+
 export const agentApi = {
   getStatus: () => agentFetch<AgentStatus>('/api/status'),
 
   getQueue: (limit = 50) => agentFetch<QueueResponse>(`/api/queue?limit=${limit}`),
+
+  getRecentNotifications: (limit = 20, soloNoLeidas = false) =>
+    agentFetch<RecentNotificationsResponse>(
+      `/api/mensajes/recientes?limit=${limit}&solo_no_leidas=${soloNoLeidas ? 'true' : 'false'}`,
+    ),
+
+  markNotificationRead: (id: number) =>
+    agentFetch<{ ok: boolean; id: number }>('/api/mensajes/marcar-leida', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
+
+  simulateNotification: (payload?: {
+    codigo_empleado?: string;
+    nombre_empleado?: string;
+    tipo_marca?: 'ENTRADA' | 'SALIDA';
+    titulo?: string;
+    mensaje?: string;
+    texto_voz_personalizado?: string;
+  }) =>
+    agentFetch<{ ok: boolean; id: number; notificacion: TriggeredNotificationItem | null }>(
+      '/api/mensajes/simular',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+      },
+    ),
 
   getLogs: (level?: string, search?: string, limit = 100) => {
     const params = new URLSearchParams();

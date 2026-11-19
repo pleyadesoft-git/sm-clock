@@ -105,14 +105,14 @@ isOneToOne: false
                   ]
                 },"checadas": {
                   Row: {
-                    "agente_id": string | null,"ambigua": boolean,"codigo_empleado": string,"created_at": string,"fuente_id": string,"id": number,"tenant_id": string,"tipo_marca": string,"tipo_verificacion": string | null,"ts_dispositivo_local": string,"ts_utc": string
+                    "agente_id": string | null,"ambigua": boolean,"codigo_empleado": string,"created_at": string,"dentro_geocerca": boolean | null,"distancia_sucursal_m": number | null,"fuente_id": string,"id": number,"latitud": number | null,"longitud": number | null,"precision_m": number | null,"sucursal_id": string | null,"tenant_id": string,"tipo_marca": string,"tipo_verificacion": string | null,"ts_dispositivo_local": string,"ts_utc": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "agente_id"?: string | null,"ambigua"?: boolean,"codigo_empleado": string,"created_at"?: string,"fuente_id": string,"id"?: never,"tenant_id": string,"tipo_marca"?: string,"tipo_verificacion"?: string | null,"ts_dispositivo_local": string,"ts_utc": string
+                    "agente_id"?: string | null,"ambigua"?: boolean,"codigo_empleado": string,"created_at"?: string,"dentro_geocerca"?: boolean | null,"distancia_sucursal_m"?: number | null,"fuente_id": string,"id"?: never,"latitud"?: number | null,"longitud"?: number | null,"precision_m"?: number | null,"sucursal_id"?: string | null,"tenant_id": string,"tipo_marca"?: string,"tipo_verificacion"?: string | null,"ts_dispositivo_local": string,"ts_utc": string
                   }
                   Update: {
-                    "agente_id"?: string | null,"ambigua"?: boolean,"codigo_empleado"?: string,"created_at"?: string,"fuente_id"?: string,"id"?: never,"tenant_id"?: string,"tipo_marca"?: string,"tipo_verificacion"?: string | null,"ts_dispositivo_local"?: string,"ts_utc"?: string
+                    "agente_id"?: string | null,"ambigua"?: boolean,"codigo_empleado"?: string,"created_at"?: string,"dentro_geocerca"?: boolean | null,"distancia_sucursal_m"?: number | null,"fuente_id"?: string,"id"?: never,"latitud"?: number | null,"longitud"?: number | null,"precision_m"?: number | null,"sucursal_id"?: string | null,"tenant_id"?: string,"tipo_marca"?: string,"tipo_verificacion"?: string | null,"ts_dispositivo_local"?: string,"ts_utc"?: string
                   }
                   Relationships: [
                     {
@@ -126,6 +126,12 @@ isOneToOne: false
       columns: ["fuente_id"]
 isOneToOne: false
       referencedRelation: "fuentes_asistencia"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "checadas_sucursal_id_fkey"
+      columns: ["sucursal_id"]
+isOneToOne: false
+      referencedRelation: "sucursales"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "checadas_tenant_id_fkey"
@@ -175,16 +181,42 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"empleados": {
+                },"empleado_webauthn_credenciales": {
                   Row: {
-                    "codigo_empleado": string,"created_at": string,"credencial": string | null,"departamento": string | null,"estatus_empleado": string,"foto_actualizada_en": string | null,"foto_path": string | null,"foto_thumb_path": string | null,"id": string,"nombre_completo": string,"puesto": string | null,"sincronizado_en": string,"sucursal_id": string | null,"tenant_id": string
+                    "algoritmo": number,"created_at": string,"credential_id": string,"empleado_id": string,"id": string,"nombre_dispositivo": string,"public_key": string,"sign_count": number,"tenant_id": string,"transports": (string)[],"ultimo_uso_en": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "codigo_empleado": string,"created_at"?: string,"credencial"?: string | null,"departamento"?: string | null,"estatus_empleado"?: string,"foto_actualizada_en"?: string | null,"foto_path"?: string | null,"foto_thumb_path"?: string | null,"id"?: string,"nombre_completo": string,"puesto"?: string | null,"sincronizado_en"?: string,"sucursal_id"?: string | null,"tenant_id": string
+                    "algoritmo"?: number,"created_at"?: string,"credential_id": string,"empleado_id": string,"id"?: string,"nombre_dispositivo"?: string,"public_key": string,"sign_count"?: number,"tenant_id": string,"transports"?: (string)[],"ultimo_uso_en"?: string | null
                   }
                   Update: {
-                    "codigo_empleado"?: string,"created_at"?: string,"credencial"?: string | null,"departamento"?: string | null,"estatus_empleado"?: string,"foto_actualizada_en"?: string | null,"foto_path"?: string | null,"foto_thumb_path"?: string | null,"id"?: string,"nombre_completo"?: string,"puesto"?: string | null,"sincronizado_en"?: string,"sucursal_id"?: string | null,"tenant_id"?: string
+                    "algoritmo"?: number,"created_at"?: string,"credential_id"?: string,"empleado_id"?: string,"id"?: string,"nombre_dispositivo"?: string,"public_key"?: string,"sign_count"?: number,"tenant_id"?: string,"transports"?: (string)[],"ultimo_uso_en"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "empleado_webauthn_credenciales_empleado_id_fkey"
+      columns: ["empleado_id"]
+isOneToOne: false
+      referencedRelation: "empleados"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "empleado_webauthn_credenciales_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"empleados": {
+                  Row: {
+                    "biometria_facial_activa": boolean,"codigo_empleado": string,"created_at": string,"credencial": string | null,"departamento": string | null,"email": string | null,"estatus_empleado": string,"foto_actualizada_en": string | null,"foto_path": string | null,"foto_thumb_path": string | null,"id": string,"nombre_completo": string,"pin_codigo": string | null,"puesto": string | null,"sincronizado_en": string,"sucursal_id": string | null,"telefono_whatsapp": string | null,"tenant_id": string,"webauthn_activo": boolean
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "biometria_facial_activa"?: boolean,"codigo_empleado": string,"created_at"?: string,"credencial"?: string | null,"departamento"?: string | null,"email"?: string | null,"estatus_empleado"?: string,"foto_actualizada_en"?: string | null,"foto_path"?: string | null,"foto_thumb_path"?: string | null,"id"?: string,"nombre_completo": string,"pin_codigo"?: string | null,"puesto"?: string | null,"sincronizado_en"?: string,"sucursal_id"?: string | null,"telefono_whatsapp"?: string | null,"tenant_id": string,"webauthn_activo"?: boolean
+                  }
+                  Update: {
+                    "biometria_facial_activa"?: boolean,"codigo_empleado"?: string,"created_at"?: string,"credencial"?: string | null,"departamento"?: string | null,"email"?: string | null,"estatus_empleado"?: string,"foto_actualizada_en"?: string | null,"foto_path"?: string | null,"foto_thumb_path"?: string | null,"id"?: string,"nombre_completo"?: string,"pin_codigo"?: string | null,"puesto"?: string | null,"sincronizado_en"?: string,"sucursal_id"?: string | null,"telefono_whatsapp"?: string | null,"tenant_id"?: string,"webauthn_activo"?: boolean
                   }
                   Relationships: [
                     {
@@ -203,14 +235,14 @@ isOneToOne: false
                   ]
                 },"fuentes_asistencia": {
                   Row: {
-                    "activo": boolean,"created_at": string,"id": string,"intervalo_checadas_min": number,"ip_local": string | null,"marca": string,"modelo": string | null,"nombre_ubicacion": string,"puerto": number | null,"sucursal_id": string | null,"tacloud_config_exportacion": Json | null,"tacloud_username": string | null,"tenant_id": string,"ultima_conexion_exitosa": string | null,"ultimo_error": string | null,"url_api": string | null,"usuario_dispositivo": string | null
+                    "activo": boolean,"clave": string | null,"consecutivo_sucursal": number | null,"created_at": string,"id": string,"intervalo_checadas_min": number,"ip_local": string | null,"marca": string,"modelo": string | null,"nombre_ubicacion": string,"puerto": number | null,"soporta_mensajes_pantalla": boolean,"sucursal_id": string | null,"tacloud_config_exportacion": Json | null,"tacloud_username": string | null,"tenant_id": string,"ultima_conexion_exitosa": string | null,"ultimo_error": string | null,"url_api": string | null,"usuario_dispositivo": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "activo"?: boolean,"created_at"?: string,"id"?: string,"intervalo_checadas_min"?: number,"ip_local"?: string | null,"marca": string,"modelo"?: string | null,"nombre_ubicacion": string,"puerto"?: number | null,"sucursal_id"?: string | null,"tacloud_config_exportacion"?: Json | null,"tacloud_username"?: string | null,"tenant_id": string,"ultima_conexion_exitosa"?: string | null,"ultimo_error"?: string | null,"url_api"?: string | null,"usuario_dispositivo"?: string | null
+                    "activo"?: boolean,"clave"?: string | null,"consecutivo_sucursal"?: number | null,"created_at"?: string,"id"?: string,"intervalo_checadas_min"?: number,"ip_local"?: string | null,"marca": string,"modelo"?: string | null,"nombre_ubicacion": string,"puerto"?: number | null,"soporta_mensajes_pantalla"?: boolean,"sucursal_id"?: string | null,"tacloud_config_exportacion"?: Json | null,"tacloud_username"?: string | null,"tenant_id": string,"ultima_conexion_exitosa"?: string | null,"ultimo_error"?: string | null,"url_api"?: string | null,"usuario_dispositivo"?: string | null
                   }
                   Update: {
-                    "activo"?: boolean,"created_at"?: string,"id"?: string,"intervalo_checadas_min"?: number,"ip_local"?: string | null,"marca"?: string,"modelo"?: string | null,"nombre_ubicacion"?: string,"puerto"?: number | null,"sucursal_id"?: string | null,"tacloud_config_exportacion"?: Json | null,"tacloud_username"?: string | null,"tenant_id"?: string,"ultima_conexion_exitosa"?: string | null,"ultimo_error"?: string | null,"url_api"?: string | null,"usuario_dispositivo"?: string | null
+                    "activo"?: boolean,"clave"?: string | null,"consecutivo_sucursal"?: number | null,"created_at"?: string,"id"?: string,"intervalo_checadas_min"?: number,"ip_local"?: string | null,"marca"?: string,"modelo"?: string | null,"nombre_ubicacion"?: string,"puerto"?: number | null,"soporta_mensajes_pantalla"?: boolean,"sucursal_id"?: string | null,"tacloud_config_exportacion"?: Json | null,"tacloud_username"?: string | null,"tenant_id"?: string,"ultima_conexion_exitosa"?: string | null,"ultimo_error"?: string | null,"url_api"?: string | null,"usuario_dispositivo"?: string | null
                   }
                   Relationships: [
                     {
@@ -229,18 +261,94 @@ isOneToOne: false
                   ]
                 },"invitaciones_usuarios": {
                   Row: {
-                    "aceptada_en": string | null,"created_at": string,"email": string,"estatus": string,"expira_en": string,"id": string,"invitado_por": string | null,"nombre_completo": string,"rol": string,"tenant_id": string,"token_hash": string,"updated_at": string
+                    "aceptada_en": string | null,"created_at": string,"email": string,"estatus": string,"expira_en": string,"id": string,"invitado_por": string | null,"nombre_completo": string,"rol": string,"sucursal_id": string | null,"tenant_id": string,"token_hash": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "aceptada_en"?: string | null,"created_at"?: string,"email": string,"estatus"?: string,"expira_en": string,"id"?: string,"invitado_por"?: string | null,"nombre_completo": string,"rol": string,"tenant_id": string,"token_hash": string,"updated_at"?: string
+                    "aceptada_en"?: string | null,"created_at"?: string,"email": string,"estatus"?: string,"expira_en": string,"id"?: string,"invitado_por"?: string | null,"nombre_completo": string,"rol": string,"sucursal_id"?: string | null,"tenant_id": string,"token_hash": string,"updated_at"?: string
                   }
                   Update: {
-                    "aceptada_en"?: string | null,"created_at"?: string,"email"?: string,"estatus"?: string,"expira_en"?: string,"id"?: string,"invitado_por"?: string | null,"nombre_completo"?: string,"rol"?: string,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
+                    "aceptada_en"?: string | null,"created_at"?: string,"email"?: string,"estatus"?: string,"expira_en"?: string,"id"?: string,"invitado_por"?: string | null,"nombre_completo"?: string,"rol"?: string,"sucursal_id"?: string | null,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "invitaciones_usuarios_sucursal_id_fkey"
+      columns: ["sucursal_id"]
+isOneToOne: false
+      referencedRelation: "sucursales"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "invitaciones_usuarios_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"mensajes_checadas": {
+                  Row: {
+                    "activo": boolean,"alcance": string,"creado_por": string | null,"created_at": string,"departamento": string | null,"empleado_id": string | null,"evento_disparo": string,"id": string,"mensaje": string,"modo_entrega": string,"repeticion": string,"reproducir_audio": boolean,"sucursal_id": string | null,"tenant_id": string,"texto_voz_personalizado": string | null,"titulo": string,"updated_at": string,"vigente_hasta": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "activo"?: boolean,"alcance"?: string,"creado_por"?: string | null,"created_at"?: string,"departamento"?: string | null,"empleado_id"?: string | null,"evento_disparo"?: string,"id"?: string,"mensaje": string,"modo_entrega"?: string,"repeticion"?: string,"reproducir_audio"?: boolean,"sucursal_id"?: string | null,"tenant_id": string,"texto_voz_personalizado"?: string | null,"titulo": string,"updated_at"?: string,"vigente_hasta"?: string | null
+                  }
+                  Update: {
+                    "activo"?: boolean,"alcance"?: string,"creado_por"?: string | null,"created_at"?: string,"departamento"?: string | null,"empleado_id"?: string | null,"evento_disparo"?: string,"id"?: string,"mensaje"?: string,"modo_entrega"?: string,"repeticion"?: string,"reproducir_audio"?: boolean,"sucursal_id"?: string | null,"tenant_id"?: string,"texto_voz_personalizado"?: string | null,"titulo"?: string,"updated_at"?: string,"vigente_hasta"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "mensajes_checadas_empleado_id_fkey"
+      columns: ["empleado_id"]
+isOneToOne: false
+      referencedRelation: "empleados"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "mensajes_checadas_sucursal_id_fkey"
+      columns: ["sucursal_id"]
+isOneToOne: false
+      referencedRelation: "sucursales"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "mensajes_checadas_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"mensajes_checadas_entregas": {
+                  Row: {
+                    "canal_utilizado": string,"checada_id": number | null,"codigo_empleado": string,"detalle": string | null,"dispositivo_soportaba": boolean,"email_destino": string | null,"empleado_id": string,"entregado_en": string,"estatus_entrega": string,"id": string,"mensaje_id": string,"telefono_whatsapp": string | null,"tenant_id": string,"tipo_marca": string,"whatsapp_web_url": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "canal_utilizado": string,"checada_id"?: number | null,"codigo_empleado": string,"detalle"?: string | null,"dispositivo_soportaba"?: boolean,"email_destino"?: string | null,"empleado_id": string,"entregado_en"?: string,"estatus_entrega": string,"id"?: string,"mensaje_id": string,"telefono_whatsapp"?: string | null,"tenant_id": string,"tipo_marca"?: string,"whatsapp_web_url"?: string | null
+                  }
+                  Update: {
+                    "canal_utilizado"?: string,"checada_id"?: number | null,"codigo_empleado"?: string,"detalle"?: string | null,"dispositivo_soportaba"?: boolean,"email_destino"?: string | null,"empleado_id"?: string,"entregado_en"?: string,"estatus_entrega"?: string,"id"?: string,"mensaje_id"?: string,"telefono_whatsapp"?: string | null,"tenant_id"?: string,"tipo_marca"?: string,"whatsapp_web_url"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "mensajes_checadas_entregas_checada_id_fkey"
+      columns: ["checada_id"]
+isOneToOne: false
+      referencedRelation: "checadas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "mensajes_checadas_entregas_empleado_id_fkey"
+      columns: ["empleado_id"]
+isOneToOne: false
+      referencedRelation: "empleados"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "mensajes_checadas_entregas_mensaje_id_fkey"
+      columns: ["mensaje_id"]
+isOneToOne: false
+      referencedRelation: "mensajes_checadas"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "mensajes_checadas_entregas_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -249,17 +357,23 @@ isOneToOne: false
                   ]
                 },"perfiles_usuarios": {
                   Row: {
-                    "activo": boolean,"auth_provider": string,"created_at": string,"deleted_at": string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id": string | null,"ultimo_acceso_en": string | null,"updated_at": string
+                    "activo": boolean,"auth_provider": string,"created_at": string,"deleted_at": string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"sucursal_id": string | null,"tenant_id": string | null,"ultimo_acceso_en": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
+                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email": string,"id": string,"nombre_completo": string,"rol": string,"sucursal_id"?: string | null,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email"?: string,"id"?: string,"nombre_completo"?: string,"rol"?: string,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
+                    "activo"?: boolean,"auth_provider"?: string,"created_at"?: string,"deleted_at"?: string | null,"email"?: string,"id"?: string,"nombre_completo"?: string,"rol"?: string,"sucursal_id"?: string | null,"tenant_id"?: string | null,"ultimo_acceso_en"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "perfiles_usuarios_sucursal_id_fkey"
+      columns: ["sucursal_id"]
+isOneToOne: false
+      referencedRelation: "sucursales"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "perfiles_usuarios_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
@@ -269,14 +383,14 @@ isOneToOne: false
                   ]
                 },"sucursales": {
                   Row: {
-                    "activa": boolean,"clave": string,"created_at": string,"direccion": string | null,"id": string,"nombre": string,"tenant_id": string
+                    "activa": boolean,"clave": string,"created_at": string,"direccion": string | null,"id": string,"latitud": number | null,"longitud": number | null,"nombre": string,"radio_geocerca_m": number,"tenant_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "activa"?: boolean,"clave": string,"created_at"?: string,"direccion"?: string | null,"id"?: string,"nombre": string,"tenant_id": string
+                    "activa"?: boolean,"clave": string,"created_at"?: string,"direccion"?: string | null,"id"?: string,"latitud"?: number | null,"longitud"?: number | null,"nombre": string,"radio_geocerca_m"?: number,"tenant_id": string
                   }
                   Update: {
-                    "activa"?: boolean,"clave"?: string,"created_at"?: string,"direccion"?: string | null,"id"?: string,"nombre"?: string,"tenant_id"?: string
+                    "activa"?: boolean,"clave"?: string,"created_at"?: string,"direccion"?: string | null,"id"?: string,"latitud"?: number | null,"longitud"?: number | null,"nombre"?: string,"radio_geocerca_m"?: number,"tenant_id"?: string
                   }
                   Relationships: [
                     {
@@ -315,6 +429,11 @@ isOneToOne: false
                            },
 "custom_access_token_hook":
 { Args: { "event": Json }; Returns: Json
+                           },
+"generar_nomenclatura_fuente":
+{ Args: { "p_sucursal_id": string,"p_tenant_id": string }; Returns: {
+              "clave": string,"consecutivo": number
+            }[]
                            }
           }
           Enums: {

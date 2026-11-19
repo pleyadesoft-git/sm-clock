@@ -271,4 +271,34 @@ describe('<AppShell /> Menú nav responsivo y gestos táctiles', () => {
     expect(screen.getByText('Usuario y Contraseña')).toBeDefined();
     expect(screen.getByText('Biométricos y WebAuthn')).toBeDefined();
   });
+
+  it('muestra el nombre del tenant en la barra lateral, encabezado y menú de usuario en modo cliente', async () => {
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1200 });
+    render(
+      <AppShell
+        title="Dashboard"
+        mode="client"
+        userRole="ADMIN_EMPRESA"
+        tenantNombre="Empresa Maquiladora S.A. de C.V."
+      >
+        <div>Contenido Principal</div>
+      </AppShell>,
+    );
+    await waitFor(() => expect(screen.getByText('Contenido Principal')).toBeDefined());
+
+    // Verificar badge del tenant en encabezado superior
+    const headerBadge = screen.getByTestId('header-tenant-badge');
+    expect(within(headerBadge).getByText('Empresa Maquiladora S.A. de C.V.')).toBeDefined();
+
+    // Verificar badge del tenant en barra lateral escritorio
+    const sidebarBadge = screen.getByTestId('sidebar-tenant-badge');
+    expect(within(sidebarBadge).getByText('Empresa Maquiladora S.A. de C.V.')).toBeDefined();
+
+    // Abrir menú de usuario y verificar item de empresa activa
+    const userMenuBtn = screen.getByRole('button', { name: /Abrir menú de perfil y credenciales de usuario/i });
+    fireEvent.click(userMenuBtn);
+
+    const userNavTenantItem = screen.getByTestId('user-nav-tenant-item');
+    expect(within(userNavTenantItem).getByText('Empresa Maquiladora S.A. de C.V.')).toBeDefined();
+  });
 });

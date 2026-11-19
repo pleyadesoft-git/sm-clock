@@ -7,8 +7,11 @@ import {
   Ban,
   Building2,
   CheckCircle2,
+  Clock,
+  Mail,
   Pencil,
   Plus,
+  Server,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -20,6 +23,7 @@ import {
   type PlanCodigo,
   type TenantStatus,
 } from '@sm-clock/contracts';
+import type { TenantInfraResumen } from '@/app/api/admin/tenants/route';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,6 +36,7 @@ import { useToast } from '@/components/ui/toast';
 import { useAdminChannel } from '@/lib/realtime/use-admin-channel';
 import { formatFechaHoraMx } from '@/lib/utils';
 import { EmpresaSheet } from './empresa-sheet';
+import { TenantInfraestructuraSheet } from './tenant-infraestructura-sheet';
 
 type TenantRow = Database['public']['Tables']['tenants']['Row'] & {
   admin_inicial?: {
@@ -40,6 +45,7 @@ type TenantRow = Database['public']['Tables']['tenants']['Row'] & {
     email: string;
     auth_provider: string;
   } | null;
+  resumen_infraestructura?: TenantInfraResumen;
 };
 
 const STATUS_BADGE_MAP: Record<TenantStatus, BadgeVariant> = {
@@ -76,6 +82,11 @@ export default function AdminEmpresasPage() {
   const [editingTenant, setEditingTenant] = React.useState<TenantRow | null>(
     null,
   );
+  const [infraSheetOpen, setInfraSheetOpen] = React.useState(false);
+  const [infraTenant, setInfraTenant] = React.useState<TenantRow | null>(null);
+  const [infraInitialMode, setInfraInitialMode] = React.useState<
+    'overview' | 'email'
+  >('overview');
   const [disablingTarget, setDisablingTarget] =
     React.useState<TenantRow | null>(null);
   const [togglingStatus, setTogglingStatus] = React.useState(false);
@@ -297,6 +308,69 @@ export default function AdminEmpresasPage() {
         },
       },
       {
+        id: 'infraestructura',
+        header: 'Sucursales / Relojes',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const item = row.original;
+          const resumen = item.resumen_infraestructura;
+          const sucTotal = resumen?.sucursales_total ?? 0;
+          const sucActivas = resumen?.sucursales_activas ?? 0;
+          const relTotal = resumen?.relojes_total ?? 0;
+          const relActivos = resumen?.relojes_activos ?? 0;
+          const relError = resumen?.relojes_con_error ?? 0;
+
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                setInfraTenant(item);
+                setInfraInitialMode('overview');
+                setInfraSheetOpen(true);
+              }}
+              className="group flex flex-col items-start gap-[var(--s-1)] rounded-[var(--r-sm)] px-[var(--s-2)] py-[var(--s-1)] text-left transition-colors hover:bg-[var(--surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              aria-label={`Ver sucursales, relojes y contactos de ${item.nombre_comercial}`}
+            >
+              <div className="flex items-center gap-[var(--s-2)] text-xs text-[var(--text)]">
+                <span className="inline-flex items-center gap-[var(--s-1)] font-medium">
+                  <Building2
+                    className="size-3.5 text-[var(--accent)]"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                  {sucActivas}/{sucTotal} suc.
+                </span>
+                <span className="text-[var(--text-2)]">·</span>
+                <span className="inline-flex items-center gap-[var(--s-1)] font-medium">
+                  <Clock
+                    className="size-3.5 text-[var(--accent)]"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                  {relActivos}/{relTotal} rel.
+                </span>
+              </div>
+              {relError > 0 ? (
+                <Badge variant="danger">
+                  <AlertTriangle
+                    className="mr-[var(--s-1)] size-3"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {relError} {relError === 1 ? 'con error' : 'con errores'}
+                  </span>
+                </Badge>
+              ) : (
+                <span className="text-xs text-[var(--accent)] group-hover:underline">
+                  Ver detalle y contactos
+                </span>
+              )}
+            </button>
+          );
+        },
+      },
+      {
         id: 'rfc',
         accessorKey: 'rfc',
         header: 'RFC / C.P.',
@@ -366,6 +440,26 @@ export default function AdminEmpresasPage() {
                 label={`Acciones para ${item.nombre_comercial}`}
                 actions={[
                   {
+                    id: 'infraestructura',
+                    label: 'Sucursales y relojes',
+                    icon: Server,
+                    onClick: () => {
+                      setInfraTenant(item);
+                      setInfraInitialMode('overview');
+                      setInfraSheetOpen(true);
+                    },
+                  },
+                  {
+                    id: 'enviar-correo',
+                    label: 'Enviar correo',
+                    icon: Mail,
+                    onClick: () => {
+                      setInfraTenant(item);
+                      setInfraInitialMode('email');
+                      setInfraSheetOpen(true);
+                    },
+                  },
+                  {
                     id: 'editar',
                     label: 'Editar',
                     icon: Pencil,
@@ -424,6 +518,16 @@ export default function AdminEmpresasPage() {
       },
       { header: 'Plan', accessor: (r: TenantRow) => r.plan_codigo },
       { header: 'Estatus', accessor: (r: TenantRow) => r.estatus },
+      {
+        header: 'Sucursales (Activas/Total)',
+        accessor: (r: TenantRow) =>
+          `${r.resumen_infraestructura?.sucursales_activas ?? 0}/${r.resumen_infraestructura?.sucursales_total ?? 0}`,
+      },
+      {
+        header: 'Relojes (Activos/Total)',
+        accessor: (r: TenantRow) =>
+          `${r.resumen_infraestructura?.relojes_activos ?? 0}/${r.resumen_infraestructura?.relojes_total ?? 0}`,
+      },
       { header: 'Zona Horaria', accessor: (r: TenantRow) => r.zona_horaria },
       {
         header: 'Admin Inicial',
@@ -547,7 +651,7 @@ export default function AdminEmpresasPage() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         initialData={editingTenant}
-        onSaved={() => {
+        onSaved={(meta) => {
           void queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
           toast({
             title: editingTenant
@@ -555,10 +659,19 @@ export default function AdminEmpresasPage() {
               : 'Empresa y Admin inicial registrados',
             description: editingTenant
               ? 'Los cambios se guardaron y quedaron registrados en la bitácora de auditoría.'
-              : 'Se creó la empresa y se aprovisionó al Administrador inicial con Google Auth.',
+              : meta?.emailDelivered
+                ? 'Se creó la empresa y se envió la invitación por correo al Administrador inicial para definir su contraseña o usar Google Auth.'
+                : 'Se creó la empresa y se generó la invitación para el Administrador inicial (revisa la configuración SMTP si el correo no se entregó).',
             variant: 'success',
           });
         }}
+      />
+
+      <TenantInfraestructuraSheet
+        open={infraSheetOpen}
+        onOpenChange={setInfraSheetOpen}
+        tenant={infraTenant}
+        initialMode={infraInitialMode}
       />
 
       {/* Diálogo de confirmación para inhabilitar empresa */}

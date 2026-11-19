@@ -9,7 +9,7 @@ export interface ToastMessage {
   id: string;
   title: string;
   description?: string;
-  variant?: 'default' | 'success' | 'danger';
+  variant?: 'default' | 'success' | 'warning' | 'danger';
 }
 
 interface ToastContextValue {
@@ -59,6 +59,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 {m.variant === 'danger' ? (
                   <AlertCircle
                     className="size-5 shrink-0 text-[var(--danger)]"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                ) : m.variant === 'warning' ? (
+                  <AlertCircle
+                    className="size-5 shrink-0 text-[var(--warning)]"
                     strokeWidth={1.75}
                     aria-hidden="true"
                   />

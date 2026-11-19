@@ -31,7 +31,7 @@
   --r-xl: 28px;
   --r-pill: 9999px;
 
-  /* 4px spacing scale */
+  /* 4px spacing scale (tokens --s-1 .. --s-10) */
   --s-1: 4px;
   --s-2: 8px;
   --s-3: 12px;

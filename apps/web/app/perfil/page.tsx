@@ -3,6 +3,9 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
   Eye,
   EyeOff,
@@ -14,7 +17,8 @@ import {
   UserCheck,
 } from 'lucide-react';
 import {
-  UpdateOwnProfileRequestSchema,
+  safeEmailSchema,
+  safeSanitizedTextSchema,
   type UserRole,
 } from '@sm-clock/contracts';
 import { AppShell } from '@/components/layout/app-shell';
@@ -27,6 +31,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/toast';
 import { PasskeySecurityCard } from '@/components/features/auth/passkey-security-card';
@@ -43,6 +55,65 @@ export interface CurrentUserProfileData {
   authProvider: 'GOOGLE' | 'EMAIL' | 'BOTH';
   avatarUrl: string | null;
 }
+
+function buildProfileFormSchema(requireCurrentPassword: boolean) {
+  return z
+    .object({
+      nombre_completo: safeSanitizedTextSchema({
+        min: 2,
+        max: 140,
+        minMessage: 'Ingresa tu nombre completo (mínimo 2 caracteres)',
+        maxMessage: 'El nombre completo no puede exceder 140 caracteres',
+        injectionMessage:
+          'El nombre completo contiene caracteres o código no permitido',
+      }),
+      email: safeEmailSchema('Ingresa un correo electrónico válido'),
+      current_password: z.string().max(128).optional().or(z.literal('')),
+      password: z.string().max(128).optional().or(z.literal('')),
+      confirm_password: z.string().max(128).optional().or(z.literal('')),
+    })
+    .superRefine((data, ctx) => {
+      const currentPwd = data.current_password ?? '';
+      const newPwd = data.password ?? '';
+      const confirmPwd = data.confirm_password ?? '';
+      const wantsPasswordChange =
+        currentPwd.length > 0 || newPwd.length > 0 || confirmPwd.length > 0;
+
+      if (!wantsPasswordChange) return;
+
+      if (requireCurrentPassword && currentPwd.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['current_password'],
+          message: 'Ingresa tu contraseña actual para confirmar el cambio',
+        });
+      }
+
+      if (newPwd.length < 8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['password'],
+          message: 'La nueva contraseña debe tener al menos 8 caracteres',
+        });
+      }
+
+      if (confirmPwd.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['confirm_password'],
+          message: 'Confirma tu nueva contraseña',
+        });
+      } else if (newPwd !== confirmPwd) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['confirm_password'],
+          message: 'Las contraseñas no coinciden',
+        });
+      }
+    });
+}
+
+type ProfileFormValues = z.infer<ReturnType<typeof buildProfileFormSchema>>;
 
 function getInitials(name: string, email: string): string {
   const source = name.trim() || email.trim();
@@ -64,10 +135,9 @@ export default function PerfilUsuarioPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [nombreCompleto, setNombreCompleto] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
   const [avatarLoadError, setAvatarLoadError] = React.useState(false);
@@ -84,6 +154,24 @@ export default function PerfilUsuarioPage() {
   });
 
   const profile = meRes?.data;
+  const isGoogleOnly = profile?.authProvider === 'GOOGLE';
+
+  const formSchema = React.useMemo(
+    () => buildProfileFormSchema(!isGoogleOnly),
+    [isGoogleOnly],
+  );
+
+  const form = useForm<ProfileFormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      nombre_completo: '',
+      email: '',
+      current_password: '',
+      password: '',
+      confirm_password: '',
+    },
+    mode: 'onTouched',
+  });
 
   const { status: tenantState } = useTenantChannel({
     tenantId: profile?.tenantId,
@@ -99,36 +187,36 @@ export default function PerfilUsuarioPage() {
 
   React.useEffect(() => {
     if (!profile) return;
-    setNombreCompleto(profile.nombreCompleto);
-    setEmail(profile.email);
-    setAvatarLoadError(false);
-  }, [profile]);
-
-  async function handleSaveProfile(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    const parsed = UpdateOwnProfileRequestSchema.safeParse({
-      nombre_completo: nombreCompleto.trim(),
-      email: email.trim(),
-      password: password.length > 0 ? password : undefined,
+    form.reset({
+      nombre_completo: profile.nombreCompleto,
+      email: profile.email,
+      current_password: '',
+      password: '',
+      confirm_password: '',
     });
+    setAvatarLoadError(false);
+  }, [profile, form]);
 
-    if (!parsed.success) {
-      toast({
-        title: 'Revisa los datos de tu perfil',
-        description:
-          parsed.error.issues[0]?.message ?? 'Datos de perfil inválidos',
-        variant: 'danger',
-      });
-      return;
-    }
+  async function handleSaveProfile(values: ProfileFormValues) {
+    const newPassword = values.password?.trim() ? values.password : undefined;
+    const payload = {
+      nombre_completo: values.nombre_completo.trim(),
+      email: values.email.trim(),
+      ...(newPassword
+        ? {
+            current_password: values.current_password || undefined,
+            password: newPassword,
+            confirm_password: values.confirm_password || undefined,
+          }
+        : {}),
+    };
 
     setSaving(true);
     try {
       const res = await fetch('/api/auth/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify(payload),
       });
 
       const body = (await res.json()) as {
@@ -137,6 +225,15 @@ export default function PerfilUsuarioPage() {
       };
 
       if (!res.ok) {
+        if (
+          body.error &&
+          body.error.toLowerCase().includes('contraseña actual')
+        ) {
+          form.setError('current_password', {
+            type: 'server',
+            message: body.error,
+          });
+        }
         toast({
           title: 'No se pudo actualizar tu perfil',
           description: body.error ?? 'Intenta nuevamente en unos segundos.',
@@ -145,7 +242,17 @@ export default function PerfilUsuarioPage() {
         return;
       }
 
-      setPassword('');
+      form.reset({
+        nombre_completo: values.nombre_completo.trim(),
+        email: values.email.trim(),
+        current_password: '',
+        password: '',
+        confirm_password: '',
+      });
+      setShowCurrentPassword(false);
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['auth-me-profile'] }),
         queryClient.invalidateQueries({ queryKey: ['auth-me-role'] }),
@@ -154,7 +261,7 @@ export default function PerfilUsuarioPage() {
       toast({
         title: 'Perfil y credenciales actualizados',
         description: body.data?.passwordUpdated
-          ? 'Tu nombre, correo y contraseña de acceso directo se guardaron correctamente.'
+          ? 'Tu nombre, correo y contraseña de acceso se guardaron correctamente.'
           : 'Tus datos principales de perfil fueron actualizados.',
         variant: 'success',
       });
@@ -176,16 +283,18 @@ export default function PerfilUsuarioPage() {
   }
 
   const shellMode = profile?.rol === 'SUPER_ADMIN' ? 'admin' : 'client';
+  const watchedName = form.watch('nombre_completo');
+  const watchedEmail = form.watch('email');
   const initials = getInitials(
-    profile?.nombreCompleto ?? nombreCompleto,
-    profile?.email ?? email,
+    profile?.nombreCompleto ?? watchedName,
+    profile?.email ?? watchedEmail,
   );
   const showAvatarImg = Boolean(profile?.avatarUrl) && !avatarLoadError;
 
   return (
     <AppShell
       title="Mi Perfil y Seguridad"
-      subtitle="Administra tus datos principales (nombre, correo), usuario + contraseña, datos biométricos y llaves"
+      subtitle="Administra tus datos principales (nombre, correo), contraseña de acceso, datos biométricos y llaves"
       mode={shellMode}
       realtimeState={realtimeState}
     >
@@ -251,7 +360,7 @@ export default function PerfilUsuarioPage() {
           </CardContent>
         </Card>
 
-        {/* Tarjeta 1: Datos principales (nombre, email) + Usuario y Contraseña */}
+        {/* Tarjeta 1: Datos principales (nombre, email) + Credenciales */}
         <div id="credenciales">
           <Card>
             <CardHeader>
@@ -266,12 +375,12 @@ export default function PerfilUsuarioPage() {
                   </div>
                   <div>
                     <CardTitle>
-                      Datos Principales y Usuario + Contraseña
+                      Datos Principales y Credenciales de Acceso
                     </CardTitle>
                     <CardDescription>
-                      Actualiza tu nombre completo, correo electrónico de acceso
-                      y establece o cambia tu contraseña para ingresar con
-                      usuario + contraseña además de Google OAuth.
+                      {isGoogleOnly
+                        ? 'Actualiza tu nombre completo o correo electrónico. Tu sesión se gestiona directamente con Google OAuth.'
+                        : 'Actualiza tu nombre completo, correo electrónico y cambia tu contraseña de acceso para la app web y los agentes.'}
                     </CardDescription>
                   </div>
                 </div>
@@ -288,115 +397,262 @@ export default function PerfilUsuarioPage() {
                   Cargando información de tu cuenta…
                 </div>
               ) : (
-                <form
-                  noValidate
-                  onSubmit={(e) => void handleSaveProfile(e)}
-                  className="flex flex-col gap-[var(--s-4)]"
-                >
-                  <div className="grid grid-cols-1 gap-[var(--s-4)] md:grid-cols-2">
-                    <div className="flex flex-col gap-[var(--s-1)]">
-                      <label htmlFor="perfil-nombre" className="ios-label">
-                        Nombre completo
-                      </label>
-                      <Input
-                        id="perfil-nombre"
-                        name="name"
-                        type="text"
-                        autoComplete="name"
-                        placeholder="Ej. Roberto Gómez"
-                        value={nombreCompleto}
-                        onChange={(e) => setNombreCompleto(e.target.value)}
+                <Form {...form}>
+                  <form
+                    noValidate
+                    onSubmit={form.handleSubmit(handleSaveProfile)}
+                    className="flex flex-col gap-[var(--s-4)]"
+                  >
+                    <div className="grid grid-cols-1 gap-[var(--s-4)] md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="nombre_completo"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre completo</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="text"
+                                autoComplete="name"
+                                placeholder="Ej. Roberto Gómez"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Correo electrónico (Usuario)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="email"
+                                autoComplete="username"
+                                spellCheck={false}
+                                placeholder="tu.correo@empresa.mx"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
                     </div>
 
-                    <div className="flex flex-col gap-[var(--s-1)]">
-                      <label htmlFor="perfil-email" className="ios-label">
-                        Correo electrónico (Usuario)
-                      </label>
-                      <Input
-                        id="perfil-email"
-                        name="username"
-                        type="email"
-                        autoComplete="username"
-                        spellCheck={false}
-                        placeholder="tu.correo@empresa.mx"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-[var(--s-1)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
-                    <div className="flex items-center justify-between">
-                      <label
-                        htmlFor="perfil-password"
-                        className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--text-2)]"
-                      >
-                        <KeyRound
-                          className="size-3.5 text-[var(--accent)]"
+                    {isGoogleOnly ? (
+                      <div className="flex items-start gap-[var(--s-3)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)] text-xs text-[var(--text-2)]">
+                        <Mail
+                          className="mt-0.5 size-4 shrink-0 text-[var(--accent)]"
                           aria-hidden="true"
                         />
-                        <span>
-                          Contraseña de acceso (Usuario + Contraseña)
+                        <div className="flex flex-col gap-[var(--s-1)]">
+                          <span className="font-semibold text-[var(--text)]">
+                            Sesión gestionada con Google OAuth
+                          </span>
+                          <span>
+                            Tu cuenta utiliza Google para iniciar sesión, por lo
+                            que no necesitas cambiar tu contraseña aquí. Administra
+                            la seguridad de tu contraseña directamente desde tu
+                            cuenta de Google.
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-[var(--s-4)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
+                        <div className="flex items-center gap-[var(--s-2)]">
+                          <KeyRound
+                            className="size-4 text-[var(--accent)]"
+                            aria-hidden="true"
+                          />
+                          <span className="text-sm font-semibold text-[var(--text)]">
+                            Cambiar contraseña de acceso
+                          </span>
+                        </div>
+
+                        <FormField
+                          control={form.control}
+                          name="current_password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center justify-between">
+                                <FormLabel>Contraseña actual</FormLabel>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowCurrentPassword((prev) => !prev)
+                                  }
+                                  aria-pressed={showCurrentPassword}
+                                  className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                                  aria-label={
+                                    showCurrentPassword
+                                      ? 'Ocultar contraseña actual'
+                                      : 'Mostrar contraseña actual'
+                                  }
+                                >
+                                  {showCurrentPassword ? (
+                                    <>
+                                      <EyeOff
+                                        className="size-3.5"
+                                        aria-hidden="true"
+                                      />
+                                      <span>Ocultar</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Eye
+                                        className="size-3.5"
+                                        aria-hidden="true"
+                                      />
+                                      <span>Mostrar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              <FormControl>
+                                <Input
+                                  type={showCurrentPassword ? 'text' : 'password'}
+                                  autoComplete="current-password"
+                                  placeholder="Ingresa tu contraseña actual"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid grid-cols-1 gap-[var(--s-4)] md:grid-cols-2">
+                          <FormField
+                            control={form.control}
+                            name="password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <div className="flex items-center justify-between">
+                                  <FormLabel>Nueva contraseña</FormLabel>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowPassword((prev) => !prev)
+                                    }
+                                    aria-pressed={showPassword}
+                                    className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                                    aria-label={
+                                      showPassword
+                                        ? 'Ocultar nueva contraseña'
+                                        : 'Mostrar nueva contraseña'
+                                    }
+                                  >
+                                    {showPassword ? (
+                                      <>
+                                        <EyeOff
+                                          className="size-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Ocultar</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye
+                                          className="size-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Mostrar</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                                <FormControl>
+                                  <Input
+                                    type={showPassword ? 'text' : 'password'}
+                                    autoComplete="new-password"
+                                    placeholder="Mínimo 8 caracteres"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="confirm_password"
+                            render={({ field }) => (
+                              <FormItem>
+                                <div className="flex items-center justify-between">
+                                  <FormLabel>Confirmar nueva contraseña</FormLabel>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowConfirmPassword((prev) => !prev)
+                                    }
+                                    aria-pressed={showConfirmPassword}
+                                    className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                                    aria-label={
+                                      showConfirmPassword
+                                        ? 'Ocultar confirmación de contraseña'
+                                        : 'Mostrar confirmación de contraseña'
+                                    }
+                                  >
+                                    {showConfirmPassword ? (
+                                      <>
+                                        <EyeOff
+                                          className="size-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Ocultar</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Eye
+                                          className="size-3.5"
+                                          aria-hidden="true"
+                                        />
+                                        <span>Mostrar</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                                <FormControl>
+                                  <Input
+                                    type={
+                                      showConfirmPassword ? 'text' : 'password'
+                                    }
+                                    autoComplete="new-password"
+                                    placeholder="Repite la nueva contraseña"
+                                    {...field}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <span className="text-xs text-[var(--text-2)]">
+                          Deja estos campos en blanco si solo deseas actualizar tu
+                          nombre o correo electrónico.
                         </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        aria-pressed={showPassword}
-                        className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
-                      >
-                        {showPassword ? (
-                          <>
-                            <EyeOff className="size-3.5" aria-hidden="true" />
-                            <span>Ocultar</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="size-3.5" aria-hidden="true" />
-                            <span>Mostrar</span>
-                          </>
-                        )}
-                      </button>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-[var(--s-1)]">
+                      <Button type="submit" disabled={saving}>
+                        <Save className="size-4" aria-hidden="true" />
+                        <span>
+                          {saving
+                            ? 'Guardando cambios…'
+                            : 'Guardar datos y credenciales'}
+                        </span>
+                      </Button>
                     </div>
-
-                    <Input
-                      id="perfil-password"
-                      name="new-password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      minLength={8}
-                      maxLength={128}
-                      aria-describedby="perfil-password-constraints"
-                      placeholder="Dejar en blanco para mantener tu contraseña actual (o escribe mín. 8 caracteres)"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                    />
-
-                    <span
-                      id="perfil-password-constraints"
-                      className="inline-flex items-center gap-[var(--s-1)] text-xs text-[var(--text-2)]"
-                    >
-                      <Mail className="size-3" aria-hidden="true" />
-                      <span>
-                        Si iniciaste sesión con Google OAuth, definir una
-                        contraseña aquí te permitirá entrar también con tu
-                        correo y contraseña desde cualquier dispositivo.
-                      </span>
-                    </span>
-                  </div>
-
-                  <div className="flex justify-end pt-[var(--s-1)]">
-                    <Button type="submit" disabled={saving}>
-                      <Save className="size-4" aria-hidden="true" />
-                      <span>
-                        {saving
-                          ? 'Guardando cambios…'
-                          : 'Guardar datos y credenciales'}
-                      </span>
-                    </Button>
-                  </div>
-                </form>
+                  </form>
+                </Form>
               )}
             </CardContent>
           </Card>

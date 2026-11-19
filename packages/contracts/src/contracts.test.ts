@@ -11,6 +11,7 @@ import {
   LoginRequestSchema,
   MfaVerifyRequestSchema,
   PasskeyRenameRequestSchema,
+  ResetPasswordFormSchema,
   ResetPasswordRequestSchema,
   roleRequiresMfa,
   sanitizeRedirectPath,
@@ -18,10 +19,14 @@ import {
   WebAuthnFactorEnrollSchema,
 } from './auth';
 import {
+  calculateHaversineDistanceMeters,
   EmpleadoCreateSchema,
+  KioskCheckInOutRequestSchema,
+  parseGoogleMapsCoordinates,
   SucursalCreateSchema,
   ValidarCodigoEmpleadoResponseSchema,
   ValidarCodigoEmpleadoSchema,
+  ValidarPinEmpleadoSchema,
 } from './empleado';
 import {
   containsCodeInjectionPattern,
@@ -31,11 +36,13 @@ import {
   sanitizeTextInput,
 } from './sanitize';
 import {
+  AdminTenantEmailSchema,
   TenantCreateSchema,
   TenantCreateWithAdminSchema,
   TenantListQuerySchema,
 } from './tenant';
 import {
+  AcceptInvitationPasswordFormSchema,
   AcceptInvitationPasswordRequestSchema,
   CreateSuperAdminRequestSchema,
   InviteUserRequestSchema,
@@ -83,11 +90,22 @@ describe('@sm-clock/contracts — Auth, Tenant & Usuarios schemas', () => {
       email: 'Operador1@Empresa.mx',
       nombre_completo: 'María Fernanda López',
       rol: 'OPERADOR',
+      sucursal_id: '11111111-0001-4000-8000-000000000001',
     });
     expect(validInvite.success).toBe(true);
     if (validInvite.success) {
       expect(validInvite.data.email).toBe('operador1@empresa.mx');
+      expect(validInvite.data.sucursal_id).toBe(
+        '11111111-0001-4000-8000-000000000001',
+      );
     }
+
+    const missingSucursalInvite = InviteUserRequestSchema.safeParse({
+      email: 'Operador1@Empresa.mx',
+      nombre_completo: 'María Fernanda López',
+      rol: 'OPERADOR',
+    });
+    expect(missingSucursalInvite.success).toBe(false);
 
     const defaultGoogleSmtp = SmtpConfigUpsertSchema.safeParse({
       usar_smtp_propio: false,
@@ -307,6 +325,44 @@ describe('@sm-clock/contracts — Auth, Tenant & Usuarios schemas', () => {
       password: '123',
     });
     expect(invalidShortPassword.success).toBe(false);
+
+    const mismatch = UpdateOwnProfileRequestSchema.safeParse({
+      nombre_completo: 'María Fernanda López',
+      email: 'mflopez@empresa.mx',
+      current_password: 'ActualSegura2026',
+      password: 'NuevaPasswordSegura2026!',
+      confirm_password: 'OtraDistinta2026!',
+    });
+    expect(mismatch.success).toBe(false);
+  });
+
+  it('validates ResetPasswordFormSchema and AcceptInvitationPasswordFormSchema confirmation', () => {
+    expect(
+      ResetPasswordFormSchema.safeParse({
+        password: 'NuevaSegura2026',
+        confirm_password: 'NuevaSegura2026',
+      }).success,
+    ).toBe(true);
+    expect(
+      ResetPasswordFormSchema.safeParse({
+        password: 'NuevaSegura2026',
+        confirm_password: 'Distinta2026',
+      }).success,
+    ).toBe(false);
+    expect(
+      AcceptInvitationPasswordFormSchema.safeParse({
+        nombre_completo: 'Juan Pérez',
+        password: 'NuevaSegura2026',
+        confirm_password: 'NuevaSegura2026',
+      }).success,
+    ).toBe(true);
+    expect(
+      AcceptInvitationPasswordFormSchema.safeParse({
+        nombre_completo: 'Juan Pérez',
+        password: 'NuevaSegura2026',
+        confirm_password: 'x',
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -502,33 +558,46 @@ describe('@sm-clock/contracts — Input Sanitization & Code Injection Defense', 
     ).toBe(false);
   });
 
-  it('allows employee creation without photo and with empty or null sucursal_id', () => {
-    const validWithEmptySucursal = EmpleadoCreateSchema.safeParse({
+  it('allows employee creation with or without photo, sucursal, and optional PIN', () => {
+    const validEmployee = EmpleadoCreateSchema.safeParse({
       codigo_empleado: '1001',
       nombre_completo: 'Carlos Eduardo Ramírez',
+      email: 'Carlos.Ramirez@Empresa.mx',
+      pin_codigo: '482910',
       credencial: '',
       departamento: '',
       puesto: '',
-      sucursal_id: '',
+      sucursal_id: '11111111-0001-4000-8000-000000000001',
       estatus_empleado: 'A',
     });
-    expect(validWithEmptySucursal.success).toBe(true);
-    if (validWithEmptySucursal.success) {
-      expect(validWithEmptySucursal.data.sucursal_id).toBeNull();
-      expect(validWithEmptySucursal.data.credencial).toBeNull();
-      expect(validWithEmptySucursal.data.departamento).toBeNull();
-      expect(validWithEmptySucursal.data.puesto).toBeNull();
+    expect(validEmployee.success).toBe(true);
+    if (validEmployee.success) {
+      expect(validEmployee.data.sucursal_id).toBe(
+        '11111111-0001-4000-8000-000000000001',
+      );
+      expect(validEmployee.data.email).toBe('carlos.ramirez@empresa.mx');
+      expect(validEmployee.data.pin_codigo).toBe('482910');
+      expect(validEmployee.data.credencial).toBeNull();
     }
 
-    const validWithNullSucursal = EmpleadoCreateSchema.safeParse({
+    const validWithoutSucursalOrPin = EmpleadoCreateSchema.safeParse({
       codigo_empleado: '1002',
       nombre_completo: 'Ana Luisa Méndez',
-      sucursal_id: null,
+      sucursal_id: '',
     });
-    expect(validWithNullSucursal.success).toBe(true);
-    if (validWithNullSucursal.success) {
-      expect(validWithNullSucursal.data.sucursal_id).toBeNull();
+    expect(validWithoutSucursalOrPin.success).toBe(true);
+    if (validWithoutSucursalOrPin.success) {
+      expect(validWithoutSucursalOrPin.data.sucursal_id).toBeNull();
+      expect(validWithoutSucursalOrPin.data.pin_codigo).toBeNull();
     }
+
+    const invalidPin = EmpleadoCreateSchema.safeParse({
+      codigo_empleado: '1003',
+      nombre_completo: 'Ana Luisa Méndez',
+      pin_codigo: '12345',
+      sucursal_id: '11111111-0001-4000-8000-000000000001',
+    });
+    expect(invalidPin.success).toBe(false);
   });
 
   it('validates employee code query parameters and response schema', () => {
@@ -566,6 +635,129 @@ describe('@sm-clock/contracts — Input Sanitization & Code Injection Defense', 
     });
     expect(validOccupiedResp.success).toBe(true);
   });
+
+  it('parses Google Maps URLs and raw coordinate strings accurately', () => {
+    expect(parseGoogleMapsCoordinates('32.5435, -116.9355')).toEqual({
+      latitud: 32.5435,
+      longitud: -116.9355,
+    });
+
+    expect(
+      parseGoogleMapsCoordinates(
+        'https://www.google.com/maps/place/Planta+Otay/@32.5435123,-116.9355456,17z/data=!3m1!4b1',
+      ),
+    ).toEqual({
+      latitud: 32.543512,
+      longitud: -116.935546,
+    });
+
+    expect(
+      parseGoogleMapsCoordinates(
+        'https://www.google.com/maps/place/Otay/@32.54,-116.93,15z/data=!4m6!3m5!1s0x0:0x0!8m2!3d32.543599!4d-116.935511',
+      ),
+    ).toEqual({
+      latitud: 32.543599,
+      longitud: -116.935511,
+    });
+
+    expect(
+      parseGoogleMapsCoordinates(
+        'https://maps.google.com/?q=32.4561,-116.8752',
+      ),
+    ).toEqual({
+      latitud: 32.4561,
+      longitud: -116.8752,
+    });
+
+    expect(parseGoogleMapsCoordinates('texto sin coordenadas')).toBeNull();
+  });
+
+  it('calculates Haversine distance in meters and validates Kiosk Check-In/Out schema', () => {
+    const dist = calculateHaversineDistanceMeters(
+      32.5435,
+      -116.9355,
+      32.5436,
+      -116.9355,
+    );
+    expect(dist).toBeGreaterThan(10);
+    expect(dist).toBeLessThan(15);
+
+    expect(ValidarPinEmpleadoSchema.safeParse({ pin: '482910' }).success).toBe(
+      true,
+    );
+    expect(ValidarPinEmpleadoSchema.safeParse({ pin: '48291' }).success).toBe(
+      false,
+    );
+
+    const validPinCheckIn = KioskCheckInOutRequestSchema.safeParse({
+      tenant_code: 'tij-001',
+      tipo_marca: 'ENTRADA',
+      metodo_verificacion: 'PIN',
+      pin_codigo: '100101',
+      geolocalizacion: {
+        latitud: 32.5435,
+        longitud: -116.9355,
+        precision_m: 12,
+      },
+    });
+    expect(validPinCheckIn.success).toBe(true);
+
+    const missingPinCheckIn = KioskCheckInOutRequestSchema.safeParse({
+      tenant_code: 'TIJ-001',
+      tipo_marca: 'SALIDA',
+      metodo_verificacion: 'PIN',
+      geolocalizacion: {
+        latitud: 32.5435,
+        longitud: -116.9355,
+        precision_m: 10,
+      },
+    });
+    expect(missingPinCheckIn.success).toBe(false);
+  });
 });
+
+describe('AdminTenantEmailSchema', () => {
+  it('accepts valid Super-Admin notification email payloads', () => {
+    const parsed = AdminTenantEmailSchema.safeParse({
+      destinatario_email: 'admin@empresa.mx',
+      destinatario_nombre: 'Ana García',
+      asunto: 'Seguimiento de relojes checadores',
+      mensaje: 'Hola Ana,\nFavor de revisar la conexión del reloj en Matriz.',
+    });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.destinatario_email).toBe('admin@empresa.mx');
+      expect(parsed.data.mensaje).toContain('\n');
+    }
+  });
+
+  it('rejects invalid email, short subject/message, and script injection', () => {
+    expect(
+      AdminTenantEmailSchema.safeParse({
+        destinatario_email: 'no-valido',
+        asunto: 'Hola',
+        mensaje: 'Mensaje de prueba válido.',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      AdminTenantEmailSchema.safeParse({
+        destinatario_email: 'admin@empresa.mx',
+        asunto: 'Ok',
+        mensaje: '123',
+      }).success,
+    ).toBe(false);
+
+    expect(
+      AdminTenantEmailSchema.safeParse({
+        destinatario_email: 'admin@empresa.mx',
+        asunto: 'Aviso <script>alert(1)</script>',
+        mensaje: 'Mensaje de prueba válido.',
+      }).success,
+    ).toBe(false);
+  });
+});
+
 
 

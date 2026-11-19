@@ -8,6 +8,8 @@ export interface CurrentUser {
   nombreCompleto: string;
   rol: 'SUPER_ADMIN' | 'ADMIN_EMPRESA' | 'OPERADOR';
   tenantId: string | null;
+  tenantNombre?: string | null;
+  tenantLogoUrl?: string | null;
   authProvider: string;
   avatarUrl: string | null;
   aal?: string;

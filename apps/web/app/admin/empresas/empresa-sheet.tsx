@@ -28,11 +28,16 @@ type TenantRow = Database['public']['Tables']['tenants']['Row'] & {
   } | null;
 };
 
+export interface EmpresaSavedMeta {
+  inviteUrl?: string;
+  emailDelivered?: boolean;
+}
+
 export interface EmpresaSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialData?: TenantRow | null;
-  onSaved: () => void;
+  onSaved: (meta?: EmpresaSavedMeta) => void;
 }
 
 const PLAN_OPTIONS: readonly { value: PlanCodigo; label: string }[] = [
@@ -287,7 +292,19 @@ export function EmpresaSheet({
         return;
       }
 
-      onSaved();
+      const okJson = (await response.json().catch(() => ({}))) as {
+        inviteUrl?: string;
+        emailDelivery?: { delivered?: boolean };
+      };
+
+      onSaved(
+        isEditing
+          ? undefined
+          : {
+              inviteUrl: okJson.inviteUrl,
+              emailDelivered: okJson.emailDelivery?.delivered,
+            },
+      );
       onOpenChange(false);
     } catch (err) {
       const technicalDetails =
@@ -316,7 +333,7 @@ export function EmpresaSheet({
         open={open}
         onOpenChange={onOpenChange}
         title={isEditing ? 'Editar empresa' : 'Nueva empresa y Admin inicial'}
-        description="Datos comerciales, referencia fiscal y alta obligatoria del primer usuario Administrador (ADMIN_EMPRESA) con Google Auth."
+        description="Datos comerciales, referencia fiscal y alta del Administrador inicial (ADMIN_EMPRESA) con invitación por correo electrónico o Google Auth."
         footer={
           <>
             <Button
@@ -354,14 +371,14 @@ export function EmpresaSheet({
         >
         <fieldset className="flex flex-col gap-[var(--s-3)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface-2)] p-[var(--s-4)]">
           <legend className="px-[var(--s-2)] text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
-            1. Administrador inicial de la empresa (Google Auth)
+            1. Administrador inicial de la empresa
           </legend>
 
           <div className="flex flex-wrap items-center justify-between gap-[var(--s-2)]">
             <p className="text-xs text-[var(--text-2)]">
-              Este usuario recibirá el rol <strong>ADMIN_EMPRESA</strong> para
-              iniciar sesión con su cuenta de Google e invitar al resto de su
-              equipo.
+              Este usuario recibirá el rol <strong>ADMIN_EMPRESA</strong> y una
+              invitación por correo para crear su contraseña (para la app web y
+              los agentes, sin requerir Gmail) o iniciar con Google Auth.
             </p>
             <Badge variant="accent">
               <ShieldCheck
@@ -369,7 +386,7 @@ export function EmpresaSheet({
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
-              <span>Google Auth requerido</span>
+              <span>Email o Google Auth</span>
             </Badge>
           </div>
 
@@ -395,7 +412,7 @@ export function EmpresaSheet({
 
             <div className="flex flex-col gap-[var(--s-1)]">
               <label htmlFor="admin-email" className="ios-label">
-                Correo de Google (Workspace / Gmail) *
+                Correo electrónico del Admin *
               </label>
               <Input
                 id="admin-email"

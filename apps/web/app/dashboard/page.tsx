@@ -1,23 +1,30 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
   AlertTriangle,
   Clock,
   Cpu,
+  ExternalLink,
+  Fingerprint,
+  MapPin,
   UserCheck,
   UserX,
 } from 'lucide-react';
+import { LocationMapPreview } from '@/components/features/geolocalizacion/location-map-preview';
 import { AppShell } from '@/components/layout/app-shell';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ChartCard, type ChartDataPoint } from '@/components/ui/chart-card';
 import {
   DataTable,
   type DataTableColumnDef,
 } from '@/components/ui/data-table/data-table';
 import { SegmentedControl } from '@/components/ui/segmented-control';
+import { Sheet } from '@/components/ui/sheet';
 import { StatCard } from '@/components/ui/stat-card';
 import type { ExportColumn } from '@/lib/export/exporters';
 import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
@@ -28,6 +35,7 @@ type ChecadaRow = {
   id: number;
   tenant_id: string;
   fuente_id: string;
+  sucursal_id?: string | null;
   codigo_empleado: string;
   nombre_empleado: string;
   departamento: string;
@@ -35,7 +43,28 @@ type ChecadaRow = {
   ts_dispositivo_local: string;
   ambigua: boolean;
   tipo_marca: 'ENTRADA' | 'SALIDA' | 'CHECADA';
-  tipo_verificacion: 'HUELLA' | 'ROSTRO' | 'TARJETA' | 'API' | 'PIN' | null;
+  tipo_verificacion:
+    | 'HUELLA'
+    | 'ROSTRO'
+    | 'TARJETA'
+    | 'API'
+    | 'PIN'
+    | 'WEBAUTHN'
+    | null;
+  latitud?: number | null;
+  longitud?: number | null;
+  precision_m?: number | null;
+  distancia_sucursal_m?: number | null;
+  dentro_geocerca?: boolean | null;
+  sucursal_asignada?: {
+    id: string;
+    clave: string;
+    nombre: string;
+    direccion: string | null;
+    latitud: number | null;
+    longitud: number | null;
+    radio_geocerca_m: number;
+  } | null;
   fuentes_asistencia?: {
     nombre_ubicacion: string;
     marca: string;
@@ -70,6 +99,14 @@ interface DashboardChecadasResponse {
   pageSize: number;
 }
 
+function formatDistanceLabel(meters: number | null | undefined): string {
+  if (meters == null || !Number.isFinite(meters)) return '—';
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(2)} km`;
+  }
+  return `${Math.round(meters)} m`;
+}
+
 export default function DashboardPage() {
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(25);
@@ -77,6 +114,8 @@ export default function DashboardPage() {
   const [filtroMarca, setFiltroMarca] = React.useState<FiltroMarca>('TODAS');
   const [sortBy, setSortBy] = React.useState('ts_utc');
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
+  const [selectedGeoChecada, setSelectedGeoChecada] =
+    React.useState<ChecadaRow | null>(null);
 
   const { data, isLoading } = useQuery<DashboardChecadasResponse>({
     queryKey: [
@@ -106,6 +145,7 @@ export default function DashboardPage() {
   });
 
   const tenantId = data?.tenant.id ?? null;
+  const tenantCode = data?.tenant.tenant_code ?? 'TIJ-001';
   const timeZone = data?.tenant.zona_horaria ?? 'America/Tijuana';
 
   const { status: realtimeState } = useTenantChannel({
@@ -119,7 +159,7 @@ export default function DashboardPage() {
       {
         id: 'codigo_empleado',
         accessorKey: 'codigo_empleado',
-        header: 'Empleado',
+        header: 'Empleado y Sucursal',
         cell: ({ row }) => (
           <div className="flex flex-col">
             <span className="font-semibold text-[var(--text)]">
@@ -127,6 +167,9 @@ export default function DashboardPage() {
             </span>
             <span className="font-mono text-xs text-[var(--text-2)]">
               #{row.original.codigo_empleado} · {row.original.departamento}
+              {row.original.sucursal_asignada
+                ? ` · ${row.original.sucursal_asignada.clave}`
+                : ''}
             </span>
           </div>
         ),
@@ -157,15 +200,24 @@ export default function DashboardPage() {
         id: 'tipo_verificacion',
         accessorKey: 'tipo_verificacion',
         header: 'Biometría / Medio',
-        cell: ({ row }) => (
-          <span className="text-xs font-medium text-[var(--text-2)]">
-            {row.original.tipo_verificacion ?? 'RELOJ'}
-          </span>
-        ),
+        cell: ({ row }) => {
+          const v = row.original.tipo_verificacion ?? 'RELOJ';
+          return (
+            <Badge
+              variant={
+                v === 'WEBAUTHN' || v === 'ROSTRO' || v === 'HUELLA'
+                  ? 'info'
+                  : 'default'
+              }
+            >
+              {v}
+            </Badge>
+          );
+        },
       },
       {
         id: 'fuente',
-        header: 'Reloj / Ubicación',
+        header: 'Origen / Dispositivo',
         accessorFn: (r: ChecadaRow) =>
           r.fuentes_asistencia?.nombre_ubicacion ?? '—',
         cell: ({ row }) => (
@@ -178,6 +230,49 @@ export default function DashboardPage() {
             </span>
           </div>
         ),
+      },
+      {
+        id: 'geolocalizacion',
+        header: 'Geolocalización / Geocerca',
+        accessorFn: (r: ChecadaRow) =>
+          r.latitud != null && r.longitud != null
+            ? `${r.latitud.toFixed(5)}, ${r.longitud.toFixed(5)}`
+            : 'Reloj físico en planta',
+        cell: ({ row }) => {
+          const item = row.original;
+          if (item.latitud == null || item.longitud == null) {
+            return (
+              <span className="text-xs text-[var(--text-3)]">
+                Reloj fijo ({item.sucursal_asignada?.clave ?? 'Sitio'})
+              </span>
+            );
+          }
+
+          const isInside = item.dentro_geocerca !== false;
+          const distLabel = formatDistanceLabel(item.distancia_sucursal_m);
+
+          return (
+            <div className="flex flex-wrap items-center gap-[var(--s-2)]">
+              <Badge variant={isInside ? 'success' : 'warning'}>
+                {isInside
+                  ? `En sucursal (${distLabel})`
+                  : `Fuera de geocerca (${distLabel})`}
+              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedGeoChecada(item)}
+              >
+                <MapPin
+                  className="size-3.5 text-[var(--accent)]"
+                  aria-hidden="true"
+                />
+                <span>Mapa</span>
+              </Button>
+            </div>
+          );
+        },
       },
       {
         id: 'ts_dispositivo_local',
@@ -223,15 +318,48 @@ export default function DashboardPage() {
         header: 'Departamento',
         accessor: (r: ChecadaRow) => r.departamento,
       },
+      {
+        header: 'Sucursal Asignada',
+        accessor: (r: ChecadaRow) =>
+          r.sucursal_asignada
+            ? `${r.sucursal_asignada.clave} - ${r.sucursal_asignada.nombre}`
+            : '',
+      },
       { header: 'Tipo Marca', accessor: (r: ChecadaRow) => r.tipo_marca },
       {
-        header: 'Verificación',
-        accessor: (r: ChecadaRow) => r.tipo_verificacion ?? '',
+        header: 'Verificación Biométrica',
+        accessor: (r: ChecadaRow) => r.tipo_verificacion ?? 'RELOJ',
       },
       {
-        header: 'Ubicación Reloj',
+        header: 'Ubicación / Fuente',
         accessor: (r: ChecadaRow) =>
           r.fuentes_asistencia?.nombre_ubicacion ?? '',
+      },
+      {
+        header: 'Latitud Check-In/Out',
+        accessor: (r: ChecadaRow) =>
+          r.latitud != null ? r.latitud.toFixed(6) : '',
+      },
+      {
+        header: 'Longitud Check-In/Out',
+        accessor: (r: ChecadaRow) =>
+          r.longitud != null ? r.longitud.toFixed(6) : '',
+      },
+      {
+        header: 'Distancia a Sucursal (m)',
+        accessor: (r: ChecadaRow) =>
+          r.distancia_sucursal_m != null
+            ? String(Math.round(r.distancia_sucursal_m))
+            : '',
+      },
+      {
+        header: 'Estatus Geocerca',
+        accessor: (r: ChecadaRow) =>
+          r.dentro_geocerca == null
+            ? 'RELOJ_FISICO'
+            : r.dentro_geocerca
+              ? 'EN_SUCURSAL'
+              : 'FUERA_DE_SUCURSAL',
       },
       {
         header: 'Hora Local Dispositivo',
@@ -250,14 +378,28 @@ export default function DashboardPage() {
 
   return (
     <AppShell
-      title={
-        data?.tenant.nombre_comercial
-          ? `Asistencia en Vivo · ${data.tenant.nombre_comercial}`
-          : 'Tablero de Asistencia en Vivo'
-      }
-      subtitle={`Zona horaria activa: ${timeZone} · Sincronización en tiempo real desde Agente Local`}
+      title="Tablero de Asistencia en Vivo"
+      subtitle={`Zona horaria activa: ${timeZone} · Sincronización en tiempo real desde Relojes y Kiosco Digital`}
       mode="client"
       realtimeState={realtimeState}
+      tenantNombre={data?.tenant?.nombre_comercial}
+      actions={
+        <Link
+          href={`/checador?empresa=${encodeURIComponent(tenantCode)}`}
+          target="_blank"
+          className="inline-flex h-10 items-center gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--surface)] px-[var(--s-3)] text-sm font-medium text-[var(--text)] shadow-[var(--shadow-1)] transition-colors hover:bg-[var(--surface-2)]"
+        >
+          <Fingerprint
+            className="size-4 text-[var(--accent)]"
+            aria-hidden="true"
+          />
+          <span>Abrir Kiosco Checador</span>
+          <ExternalLink
+            className="size-3.5 text-[var(--text-3)]"
+            aria-hidden="true"
+          />
+        </Link>
+      }
     >
       <div className="flex flex-col gap-[var(--s-6)]">
         {/* Fila de 5 KPIs en vivo */}
@@ -303,10 +445,10 @@ export default function DashboardPage() {
             loading={isLoading}
           />
           <StatCard
-            label="Relojes y Agentes"
+            label="Relojes y Kioscos"
             value={
               kpis
-                ? `${kpis.relojesEnLinea}/${kpis.relojesTotales} relojes`
+                ? `${kpis.relojesEnLinea}/${kpis.relojesTotales} activos`
                 : '—'
             }
             delta={`${kpis?.agentesEnLinea ?? 0} agente activo`}
@@ -340,16 +482,16 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Bitácora inmutable de checadas con DataTable */}
+        {/* Bitácora inmutable de checadas con DataTable y Geolocalización */}
         <div className="flex flex-col gap-[var(--s-3)]">
           <div className="flex flex-wrap items-center justify-between gap-[var(--s-3)]">
             <div>
               <h2 className="text-base font-semibold text-[var(--text)]">
-                Bitácora Inmutable de Checadas
+                Bitácora Inmutable de Checadas y Geolocalización
               </h2>
               <span className="inline-flex items-center gap-[var(--s-1)] text-xs text-[var(--text-2)]">
                 <AlertTriangle className="h-3.5 w-3.5 text-[var(--warning)]" />
-                Las checadas crudas son inmutables por auditoría legal
+                Las checadas crudas y coordenadas GPS son inmutables por auditoría legal
               </span>
             </div>
 
@@ -370,7 +512,7 @@ export default function DashboardPage() {
           </div>
 
           <DataTable
-            caption="Bitácora de checadas de asistencia en tiempo real"
+            caption="Bitácora de checadas de asistencia y ubicación geográfica en tiempo real"
             columns={columns}
             data={data?.data ?? []}
             total={data?.total ?? 0}
@@ -391,11 +533,65 @@ export default function DashboardPage() {
               setSortDir(dir);
             }}
             isLoading={isLoading}
-            exportFilename="checadas-asistencia-tijuana"
+            exportFilename="checadas-asistencia-geolocalizacion-tijuana"
             exportColumns={exportColumns}
           />
         </div>
       </div>
+
+      {/* Sheet de Auditoría Geográfica de la Checada */}
+      <Sheet
+        open={Boolean(selectedGeoChecada)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedGeoChecada(null);
+        }}
+        title={
+          selectedGeoChecada
+            ? `Ubicación de ${selectedGeoChecada.tipo_marca} · ${selectedGeoChecada.nombre_empleado}`
+            : 'Ubicación geográfica del registro'
+        }
+        description={
+          selectedGeoChecada
+            ? `Empleado #${selectedGeoChecada.codigo_empleado} · Verificado por ${selectedGeoChecada.tipo_verificacion ?? 'KIOSCO'} · ${selectedGeoChecada.ts_dispositivo_local}`
+            : ''
+        }
+        footer={
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setSelectedGeoChecada(null)}
+          >
+            Cerrar
+          </Button>
+        }
+      >
+        {selectedGeoChecada &&
+          selectedGeoChecada.latitud != null &&
+          selectedGeoChecada.longitud != null && (
+            <div className="flex flex-col gap-[var(--s-4)]">
+              <LocationMapPreview
+                latitud={selectedGeoChecada.latitud}
+                longitud={selectedGeoChecada.longitud}
+                titulo={`${selectedGeoChecada.tipo_marca} de ${selectedGeoChecada.nombre_empleado}`}
+                subtitulo={
+                  selectedGeoChecada.precision_m != null
+                    ? `Precisión GPS ±${Math.round(selectedGeoChecada.precision_m)} m`
+                    : undefined
+                }
+                sucursalLatitud={selectedGeoChecada.sucursal_asignada?.latitud}
+                sucursalLongitud={selectedGeoChecada.sucursal_asignada?.longitud}
+                sucursalNombre={
+                  selectedGeoChecada.sucursal_asignada
+                    ? `${selectedGeoChecada.sucursal_asignada.clave} · ${selectedGeoChecada.sucursal_asignada.nombre}`
+                    : null
+                }
+                distanciaMetros={selectedGeoChecada.distancia_sucursal_m}
+                dentroGeocerca={selectedGeoChecada.dentro_geocerca}
+                heightClassName="h-72"
+              />
+            </div>
+          )}
+      </Sheet>
     </AppShell>
   );
 }

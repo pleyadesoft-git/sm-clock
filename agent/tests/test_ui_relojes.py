@@ -134,7 +134,40 @@ def test_api_relojes_endpoints_and_live_test(tmp_path: Path) -> None:
     assert test_data["ok"] is False
     assert any(term in test_data["mensaje"].lower() for term in ("fallo", "rechazada", "agotado", "error"))
 
-    # 4. Eliminar reloj vía DELETE /api/relojes/{id}
+    # 4. Probar lectura de registros vía POST /api/relojes/test-read
+    resp_test_read = client.post(
+        "/api/relojes/test-read",
+        json={
+            "id": clock_id,
+            "tipo": "ZKTECO",
+            "ip": "127.0.0.1",
+            "puerto": 59999,  # Puerto cerrado
+        },
+    )
+    assert resp_test_read.status_code == 200
+    test_read_data = resp_test_read.json()
+    assert test_read_data["ok"] is False
+    assert test_read_data["total_registros"] == 0
+
+    # 5. Guardar reloj con sucursal_id y clave de nomenclatura
+    resp_update = client.post(
+        "/api/relojes",
+        json={
+            "id": clock_id,
+            "nombre": "Terminal Comedor",
+            "tipo": "ZKTECO",
+            "ip": "10.0.0.50",
+            "sucursal_id": "suc-matriz-01",
+            "clave": "TIJ001-MATRIZ-01",
+        },
+    )
+    assert resp_update.status_code == 200
+    updated_clock = db.get_fuente_local(clock_id)
+    assert updated_clock is not None
+    assert updated_clock.sucursal_id == "suc-matriz-01"
+    assert updated_clock.clave == "TIJ001-MATRIZ-01"
+
+    # 6. Eliminar reloj vía DELETE /api/relojes/{id}
     resp_del = client.delete(f"/api/relojes/{clock_id}")
     assert resp_del.status_code == 200
     assert len(client.get("/api/relojes").json()) == 0

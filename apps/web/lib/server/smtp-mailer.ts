@@ -347,13 +347,23 @@ export function buildInvitationEmailTemplate(params: {
   const safeUrl = escapeHtml(params.inviteUrl);
   const safeExp = escapeHtml(params.expiraEnFormatted);
 
+  const isAdmin = params.rol === 'ADMIN_EMPRESA';
+  const accessScopeText = isAdmin
+    ? 'Con el correo y contraseña que definas (o tu cuenta de Google) podrás ingresar tanto a la aplicación web de tu empresa como al Agente de Escritorio y Agente Local de SM Clock, sin necesidad de contar con una cuenta de Gmail.'
+    : 'Con el correo y contraseña que definas (o tu cuenta de Google) podrás ingresar a la aplicación web de tu empresa en SM Clock, sin necesidad de contar con una cuenta de Gmail.';
+  const accessScopeHtml = isAdmin
+    ? 'Con el correo y contraseña que definas (o tu cuenta de Google) podrás ingresar tanto a la <strong>aplicación web</strong> como al <strong>Agente de Escritorio / Agente Local</strong> de SM Clock, sin necesidad de contar con una cuenta de Gmail.'
+    : 'Con el correo y contraseña que definas (o tu cuenta de Google) podrás ingresar a la <strong>aplicación web</strong> de tu empresa en SM Clock, sin necesidad de contar con una cuenta de Gmail.';
+
   const subject = `Invitación a ${params.tenantNombre} en SM Clock (${rolLabel})`;
   const text = [
     `Hola ${params.nombreCompleto},`,
     '',
     `Has sido invitado a unirte a ${params.tenantNombre} en la plataforma SM Clock con el rol de ${rolLabel}.`,
     '',
-    'Completa tu pre-registro e inicia sesión con correo y contraseña o con Google Auth en el siguiente enlace:',
+    accessScopeText,
+    '',
+    'Completa tu pre-registro y crea tu contraseña (o vincula Google Auth) en el siguiente enlace:',
     params.inviteUrl,
     '',
     `Este enlace expira el ${params.expiraEnFormatted}.`,
@@ -367,7 +377,8 @@ export function buildInvitationEmailTemplate(params: {
     <h2 style="margin-top: 0; color: #007AFF;">Invitación a ${safeTenant}</h2>
     <p>Hola <strong>${safeName}</strong>,</p>
     <p>El administrador de <strong>${safeTenant}</strong> te ha invitado a colaborar en <strong>SM Clock</strong> con el rol de <strong>${rolLabel}</strong>.</p>
-    <p>Haz clic en el siguiente botón para acudir al pre-registro y activar tu acceso mediante usuario y contraseña o con <strong>Google Auth</strong>:</p>
+    <p>${accessScopeHtml}</p>
+    <p>Haz clic en el siguiente botón para completar tu pre-registro y definir tu contraseña de acceso (o iniciar con <strong>Google Auth</strong>):</p>
     <p style="margin: 24px 0;">
       <a href="${safeUrl}" style="display: inline-block; background-color: #007AFF; color: #FFFFFF; text-decoration: none; font-weight: 600; padding: 12px 20px; border-radius: 10px;">
         Completar Pre-registro
@@ -656,4 +667,261 @@ export async function sendSmtpTestEmail(params: {
 
   return result;
 }
+
+export function buildEmployeePinEmailTemplate(params: {
+  nombreEmpleado: string;
+  codigoEmpleado: string;
+  pinCodigo: string;
+  tenantNombre: string;
+  tenantCode: string;
+  sucursalNombre: string;
+  kioskUrl: string;
+}): { subject: string; html: string; text: string } {
+  const safeName = escapeHtml(params.nombreEmpleado);
+  const safeCodigo = escapeHtml(params.codigoEmpleado);
+  const safePin = escapeHtml(params.pinCodigo);
+  const safeTenant = escapeHtml(params.tenantNombre);
+  const safeTenantCode = escapeHtml(params.tenantCode);
+  const safeSucursal = escapeHtml(params.sucursalNombre);
+  const safeUrl = escapeHtml(params.kioskUrl);
+
+  const subject = `Tu PIN de asistencia y acceso al Checador · ${params.tenantNombre}`;
+
+  const text = [
+    `Hola ${params.nombreEmpleado},`,
+    '',
+    `Recursos Humanos de ${params.tenantNombre} te comparte tus datos para registrar tu Entrada (Check-In) y Salida (Check-Out) desde el Kiosco Digital:`,
+    '',
+    `- Empresa: ${params.tenantNombre} (${params.tenantCode})`,
+    `- Sucursal asignada: ${params.sucursalNombre}`,
+    `- Código de empleado: #${params.codigoEmpleado}`,
+    `- Tu PIN personal de 6 dígitos: ${params.pinCodigo}`,
+    '',
+    `Enlace directo al Checador sin necesidad de iniciar sesión:`,
+    params.kioskUrl,
+    '',
+    `Recuerda activar tu ubicación GPS al momento de registrar tu asistencia. También puedes registrar tu huella o FaceID (WebAuthn) directamente en tu dispositivo.`,
+  ].join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 32px 16px; color: #1C1C1E;">
+  <div style="max-width: 520px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; padding: 32px; border: 1px solid #E5E5EA;">
+    <div style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #007AFF; margin-bottom: 8px;">
+      SM Clock · Control de Asistencia
+    </div>
+    <h1 style="font-size: 22px; font-weight: 700; margin: 0 0 14px; color: #1C1C1E;">
+      Hola, ${safeName}
+    </h1>
+    <p style="font-size: 15px; line-height: 1.55; color: #3A3A3C; margin: 0 0 20px;">
+      El equipo de <strong>${safeTenant}</strong> te comparte tu PIN personal y acceso directo para realizar tu <strong>Check-In (Entrada)</strong> y <strong>Check-Out (Salida)</strong> desde tu dispositivo móvil o tablet en sucursal.
+    </p>
+    <div style="background-color: #F2F2F7; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px;">
+      <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #636366; margin-bottom: 6px;">
+        PIN PERSONAL DE 6 DÍGITOS
+      </div>
+      <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 32px; font-weight: 800; letter-spacing: 0.25em; color: #007AFF;">
+        ${safePin}
+      </div>
+    </div>
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 24px;">
+      <tr>
+        <td style="padding: 6px 0; color: #8E8E93;">Código de Empresa:</td>
+        <td style="padding: 6px 0; color: #1C1C1E; font-weight: 600; text-align: right;">${safeTenantCode}</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #8E8E93;">Número de Empleado:</td>
+        <td style="padding: 6px 0; color: #1C1C1E; font-weight: 600; text-align: right;">#${safeCodigo}</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #8E8E93;">Sucursal Asignada:</td>
+        <td style="padding: 6px 0; color: #1C1C1E; font-weight: 600; text-align: right;">${safeSucursal}</td>
+      </tr>
+    </table>
+    <div style="text-align: center; margin: 24px 0;">
+      <a href="${safeUrl}" style="display: inline-block; background-color: #007AFF; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 15px; padding: 13px 26px; border-radius: 10px;">
+        Abrir Kiosco Checador
+      </a>
+    </div>
+    <p style="font-size: 12px; line-height: 1.5; color: #8E8E93; margin: 20px 0 0; border-top: 1px solid #E5E5EA; padding-top: 16px;">
+      Tu PIN es personal e intransferible. Al registrar tu asistencia se validará tu ubicación GPS junto con tu PIN, biometría WebAuthn o reconocimiento facial.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildEmployeePunchNotificationEmailTemplate(params: {
+  nombreEmpleado: string;
+  codigoEmpleado: string;
+  tenantNombre: string;
+  titulo: string;
+  mensaje: string;
+  tipoMarca: 'ENTRADA' | 'SALIDA' | 'CHECADA';
+  fechaHoraLocal: string;
+  dispositivoNombre?: string | null;
+}): { subject: string; html: string; text: string } {
+  const safeName = escapeHtml(params.nombreEmpleado);
+  const safeCodigo = escapeHtml(params.codigoEmpleado);
+  const safeTenant = escapeHtml(params.tenantNombre);
+  const safeTitulo = escapeHtml(params.titulo);
+  const safeMensaje = escapeHtml(params.mensaje);
+  const safeFecha = escapeHtml(params.fechaHoraLocal);
+  const safeDisp = params.dispositivoNombre
+    ? escapeHtml(params.dispositivoNombre)
+    : 'Reloj Checador';
+
+  const marcaLabel =
+    params.tipoMarca === 'ENTRADA'
+      ? 'Check-In (Entrada)'
+      : params.tipoMarca === 'SALIDA'
+        ? 'Check-Out (Salida)'
+        : 'Registro de Asistencia';
+
+  const subject = `📌 Aviso de RH al registrar tu ${marcaLabel}: ${params.titulo} · ${params.tenantNombre}`;
+
+  const text = [
+    `Hola ${params.nombreEmpleado} (#${params.codigoEmpleado}),`,
+    '',
+    `Al registrar tu ${marcaLabel} en ${params.tenantNombre}, Recursos Humanos / Administración tiene el siguiente aviso para ti:`,
+    '',
+    `📌 ${params.titulo}`,
+    `${params.mensaje}`,
+    '',
+    `Fecha y hora de checada: ${params.fechaHoraLocal} (America/Tijuana)`,
+    `Terminal: ${params.dispositivoNombre ?? 'Reloj Checador'}`,
+    '',
+    'Favor de atender esta indicación a la brevedad.',
+  ].join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 28px 16px; color: #1C1C1E;">
+  <div style="max-width: 540px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; padding: 28px; border: 1px solid #E5E5EA; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+      <span style="display: inline-block; background-color: #007AFF; color: #FFFFFF; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; letter-spacing: 0.05em; text-transform: uppercase;">
+        AVISO DE RH / ADMINISTRACIÓN
+      </span>
+      <span style="font-size: 12px; color: #8E8E93; font-weight: 600;">
+        ${escapeHtml(marcaLabel)}
+      </span>
+    </div>
+
+    <h1 style="font-size: 20px; font-weight: 700; margin: 0 0 10px; color: #1C1C1E;">
+      Hola, ${safeName}
+    </h1>
+    <p style="font-size: 14px; line-height: 1.5; color: #3A3A3C; margin: 0 0 18px;">
+      Al registrar tu asistencia en <strong>${safeTenant}</strong>, el departamento de Recursos Humanos / Administración te envió la siguiente notificación:
+    </p>
+
+    <div style="background-color: #F2F8FF; border-left: 4px solid #007AFF; border-radius: 10px; padding: 18px; margin-bottom: 20px;">
+      <div style="font-size: 13px; font-weight: 700; color: #007AFF; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em;">
+        ${safeTitulo}
+      </div>
+      <div style="font-size: 16px; font-weight: 600; color: #1C1C1E; line-height: 1.45;">
+        “${safeMensaje}”
+      </div>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 12px; color: #636366; margin-bottom: 12px;">
+      <tr>
+        <td style="padding: 5px 0; color: #8E8E93;">Empleado:</td>
+        <td style="padding: 5px 0; color: #1C1C1E; font-weight: 600; text-align: right;">#${safeCodigo} · ${safeName}</td>
+      </tr>
+      <tr>
+        <td style="padding: 5px 0; color: #8E8E93;">Terminal / Dispositivo:</td>
+        <td style="padding: 5px 0; color: #1C1C1E; font-weight: 500; text-align: right;">${safeDisp}</td>
+      </tr>
+      <tr>
+        <td style="padding: 5px 0; color: #8E8E93;">Fecha y hora de marca:</td>
+        <td style="padding: 5px 0; color: #1C1C1E; font-weight: 500; text-align: right;">${safeFecha} (America/Tijuana)</td>
+      </tr>
+    </table>
+
+    <p style="font-size: 12px; line-height: 1.45; color: #8E8E93; margin: 18px 0 0; border-top: 1px solid #E5E5EA; padding-top: 14px;">
+      Este mensaje fue enviado automáticamente por <strong>SM Clock</strong> utilizando el servidor SMTP configurado para ${safeTenant}.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildAdminTenantNotificationEmail(params: {
+  tenantNombre: string;
+  tenantCode: string;
+  destinatarioNombre?: string | null;
+  asunto: string;
+  mensaje: string;
+  remitenteNombre?: string | null;
+}): { subject: string; html: string; text: string } {
+  const greetingName = params.destinatarioNombre?.trim() || 'Administrador';
+  const safeGreeting = escapeHtml(greetingName);
+  const safeTenant = escapeHtml(params.tenantNombre);
+  const safeCode = escapeHtml(params.tenantCode);
+  const safeAsunto = escapeHtml(params.asunto);
+  const safeRemitente = escapeHtml(
+    params.remitenteNombre?.trim() || 'Soporte SM Clock',
+  );
+  const safeMensajeHtml = escapeHtml(params.mensaje).replace(/\n/g, '<br />');
+
+  const subject = `[SM Clock · ${params.tenantCode}] ${params.asunto}`;
+
+  const text = [
+    `Hola ${greetingName},`,
+    '',
+    `Has recibido una notificación del equipo de administración de SM Clock respecto a ${params.tenantNombre} (${params.tenantCode}):`,
+    '',
+    params.mensaje,
+    '',
+    `Enviado por: ${params.remitenteNombre?.trim() || 'Soporte SM Clock'}`,
+  ].join('\n');
+
+  const html = `<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F2F2F7; margin: 0; padding: 28px 16px; color: #1C1C1E;">
+  <div style="max-width: 560px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; padding: 28px; border: 1px solid #E5E5EA; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);">
+    <div style="margin-bottom: 14px;">
+      <span style="display: inline-block; background-color: #007AFF; color: #FFFFFF; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; letter-spacing: 0.05em; text-transform: uppercase;">
+        COMUNICADO SM CLOCK
+      </span>
+    </div>
+
+    <h1 style="font-size: 19px; font-weight: 700; margin: 0 0 8px; color: #1C1C1E;">
+      ${safeAsunto}
+    </h1>
+    <p style="font-size: 14px; line-height: 1.5; color: #3A3A3C; margin: 0 0 18px;">
+      Hola <strong>${safeGreeting}</strong>, te escribimos respecto a la empresa <strong>${safeTenant}</strong> (${safeCode}):
+    </p>
+
+    <div style="background-color: #F8F9FB; border: 1px solid #E5E5EA; border-radius: 12px; padding: 18px; margin-bottom: 20px; font-size: 14px; line-height: 1.6; color: #1C1C1E;">
+      ${safeMensajeHtml}
+    </div>
+
+    <p style="font-size: 12px; line-height: 1.45; color: #8E8E93; margin: 18px 0 0; border-top: 1px solid #E5E5EA; padding-top: 14px;">
+      Enviado por <strong>${safeRemitente}</strong> desde el panel de administración de <strong>SM Clock</strong>.
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+
 

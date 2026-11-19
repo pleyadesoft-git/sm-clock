@@ -9,4 +9,6 @@ export * from './tenant';
 export * from './agent';
 export * from './empleado';
 export * from './usuarios';
+export * from './mensajes';
+export * from './fuentes';
 export * from './db.types';

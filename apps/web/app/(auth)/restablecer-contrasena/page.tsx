@@ -3,8 +3,13 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { CheckCircle2, Eye, EyeOff, KeyRound } from 'lucide-react';
-import { ResetPasswordRequestSchema } from '@sm-clock/contracts';
+import {
+  ResetPasswordFormSchema,
+  type ResetPasswordFormValues,
+} from '@sm-clock/contracts';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +19,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
 function ResetPasswordFormContent() {
@@ -21,36 +34,36 @@ function ResetPasswordFormContent() {
   const searchParams = useSearchParams();
   const tokenHash = searchParams.get('token_hash') ?? undefined;
 
-  const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(
     null,
   );
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const form = useForm<ResetPasswordFormValues>({
+    resolver: zodResolver(ResetPasswordFormSchema),
+    defaultValues: {
+      password: '',
+      confirm_password: '',
+    },
+    mode: 'onTouched',
+  });
+
+  const handleSubmit = async (values: ResetPasswordFormValues) => {
     setErrorMessage(null);
     setSuccessMessage(null);
-
-    const parsed = ResetPasswordRequestSchema.safeParse({
-      password,
-      tokenHash,
-    });
-    if (!parsed.success) {
-      setErrorMessage(
-        parsed.error.issues[0]?.message ?? 'Verifica la nueva contraseña',
-      );
-      return;
-    }
-
     setIsSubmitting(true);
+
     try {
       const res = await fetch('/api/auth/restablecer-contrasena', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify({
+          password: values.password,
+          tokenHash,
+        }),
       });
 
       const body = (await res.json()) as { message?: string; error?: string };
@@ -83,90 +96,142 @@ function ResetPasswordFormContent() {
         </div>
         <CardTitle>Definir nueva contraseña</CardTitle>
         <CardDescription>
-          Elige una contraseña segura de al menos 8 caracteres para tu cuenta en SM Clock.
+          Elige una contraseña segura de al menos 8 caracteres para tu cuenta en
+          SM Clock.
         </CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-[var(--s-4)]">
-        <form
-          noValidate
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-[var(--s-4)]"
-        >
-          <div className="flex flex-col gap-[var(--s-1)]">
-            <div className="flex items-center justify-between">
-              <label htmlFor="new-password" className="ios-label">
-                Nueva contraseña
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                aria-pressed={showPassword}
-                className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
-                aria-label={
-                  showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
-                }
-              >
-                {showPassword ? (
-                  <>
-                    <EyeOff className="size-3.5" aria-hidden="true" />
-                    <span>Ocultar</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="size-3.5" aria-hidden="true" />
-                    <span>Mostrar</span>
-                  </>
-                )}
-              </button>
-            </div>
-            <Input
-              id="new-password"
-              name="new-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="new-password"
-              enterKeyHint="done"
-              aria-describedby="new-password-help"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (errorMessage) setErrorMessage(null);
-              }}
+        <Form {...form}>
+          <form
+            noValidate
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="flex flex-col gap-[var(--s-4)]"
+          >
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Nueva contraseña</FormLabel>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-pressed={showPassword}
+                      className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                      aria-label={
+                        showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                      }
+                    >
+                      {showPassword ? (
+                        <>
+                          <EyeOff className="size-3.5" aria-hidden="true" />
+                          <span>Ocultar</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="size-3.5" aria-hidden="true" />
+                          <span>Mostrar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <FormControl>
+                    <Input
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      autoFocus
+                      enterKeyHint="next"
+                      placeholder="Mínimo 8 caracteres"
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        if (errorMessage) setErrorMessage(null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-            <span
-              id="new-password-help"
-              className="text-xs font-medium text-[var(--text-2)]"
-            >
-              Mínimo 8 caracteres.
-            </span>
-          </div>
 
-          {errorMessage ? (
-            <div
-              role="alert"
-              className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
-            >
-              {errorMessage}
-            </div>
-          ) : null}
+            <FormField
+              control={form.control}
+              name="confirm_password"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Confirmar nueva contraseña</FormLabel>
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      aria-pressed={showConfirmPassword}
+                      className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                      aria-label={
+                        showConfirmPassword
+                          ? 'Ocultar confirmación de contraseña'
+                          : 'Mostrar confirmación de contraseña'
+                      }
+                    >
+                      {showConfirmPassword ? (
+                        <>
+                          <EyeOff className="size-3.5" aria-hidden="true" />
+                          <span>Ocultar</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="size-3.5" aria-hidden="true" />
+                          <span>Mostrar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <FormControl>
+                    <Input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      enterKeyHint="done"
+                      placeholder="Repite la nueva contraseña"
+                      {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        if (errorMessage) setErrorMessage(null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          {successMessage ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className="flex items-center gap-[var(--s-2)] rounded-[var(--r-md)] bg-[var(--success-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--success)]"
-            >
-              <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
-              <span>{successMessage}</span>
-            </div>
-          ) : null}
+            {errorMessage ? (
+              <div
+                role="alert"
+                className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
+              >
+                {errorMessage}
+              </div>
+            ) : null}
 
-          <Button type="submit" disabled={isSubmitting} className="w-full">
-            <span>
-              {isSubmitting ? 'Guardando…' : 'Guardar nueva contraseña'}
-            </span>
-          </Button>
-        </form>
+            {successMessage ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center gap-[var(--s-2)] rounded-[var(--r-md)] bg-[var(--success-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--success)]"
+              >
+                <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+                <span>{successMessage}</span>
+              </div>
+            ) : null}
+
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              <span>
+                {isSubmitting ? 'Guardando…' : 'Guardar nueva contraseña'}
+              </span>
+            </Button>
+          </form>
+        </Form>
 
         <div className="flex justify-center pt-[var(--s-1)]">
           <Link

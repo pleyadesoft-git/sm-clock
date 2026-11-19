@@ -8,7 +8,11 @@ export type RealtimeEvent =
   | 'agentes_changed'
   | 'tenants_changed'
   | 'configuracion_changed'
-  | 'super_admins_changed';
+  | 'super_admins_changed'
+  | 'mensajes_changed'
+  | 'mensajes_checadas_changed'
+  | 'mensaje_checada_entregado'
+  | 'fuentes_changed';
 
 /**
  * Emite un evento ligero de Supabase Realtime Broadcast al canal privado del tenant.

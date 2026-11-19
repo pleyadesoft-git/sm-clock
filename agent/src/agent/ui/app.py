@@ -12,7 +12,7 @@ from .. import __version__
 from ..config import protect_secret, unprotect_secret
 from ..db import AgentLocalDatabase, LocalClockRecord, QueuedPunch
 from ..drivers.base import BaseClockDriver
-from ..drivers.network import probe_device_connection
+from ..drivers.network import probe_device_connection, probe_device_read_records
 from ..log_manager import GLOBAL_LOG_HANDLER
 from ..sync import CloudSyncClient, enroll_agent_with_code, verify_technician_credentials
 from ..targets.layouts import CONTPAQiLayoutGenerator, ContpaqiMovimiento, TRESSLayoutGenerator
@@ -218,6 +218,68 @@ def create_diagnostic_app(
             ],
         }
 
+    # --- Endpoints de Avisos al Empleado (Visual + Audio Dinámico Personalizado) ---
+
+    @app.get("/api/mensajes/recientes")
+    def api_get_mensajes_recientes(limit: int = 25, solo_no_leidas: bool = False) -> dict[str, Any]:
+        notificaciones = db.list_recent_notifications(limit=limit, only_unread=solo_no_leidas)
+        no_leidas = db.list_recent_notifications(limit=50, only_unread=True)
+        return {
+            "ok": True,
+            "no_leidas_count": len(no_leidas),
+            "notificaciones": notificaciones,
+        }
+
+    @app.post("/api/mensajes/marcar-leida")
+    def api_mark_mensaje_leido(payload: dict[str, Any]) -> dict[str, Any]:
+        notif_id = int(payload.get("id") or 0)
+        if notif_id <= 0:
+            raise HTTPException(status_code=400, detail="Identificador de notificación inválido")
+        updated = db.mark_notification_read(notif_id)
+        return {"ok": updated, "id": notif_id}
+
+    @app.post("/api/mensajes/simular")
+    def api_simular_mensaje_empleado(payload: dict[str, Any]) -> dict[str, Any]:
+        codigo = str(payload.get("codigo_empleado") or "1001").strip()
+        nombre = str(payload.get("nombre_empleado") or "Alejandro Hernández").strip()
+        tipo_marca = str(payload.get("tipo_marca") or "ENTRADA").strip().upper()
+        if tipo_marca not in ("ENTRADA", "SALIDA", "CHECADA"):
+            tipo_marca = "ENTRADA"
+        titulo = str(payload.get("titulo") or "Aviso de Recursos Humanos").strip()
+        mensaje = str(payload.get("mensaje") or "Pasar a RH a firmar contrato").strip()
+        plantilla_voz = str(
+            payload.get("texto_voz_personalizado")
+            or "Hola {nombre}. Tienes un aviso de Recursos Humanos: {mensaje}"
+        ).strip()
+
+        primer_nombre = " ".join(nombre.split()[:2]) or nombre
+        texto_voz = (
+            plantilla_voz.replace("{nombre}", primer_nombre)
+            .replace("{nombre_completo}", nombre)
+            .replace("{codigo}", codigo)
+            .replace("{titulo}", titulo)
+            .replace("{mensaje}", mensaje)
+        )
+
+        new_id = db.record_triggered_notification(
+            mensaje_id=f"sim_{uuid.uuid4().hex[:12]}",
+            codigo_empleado=codigo,
+            nombre_empleado=nombre,
+            tipo_marca=tipo_marca,
+            titulo=titulo,
+            mensaje=mensaje,
+            texto_voz=texto_voz,
+            reproducir_audio=bool(payload.get("reproducir_audio", True)),
+            canal_utilizado="AGENTE_AUDIO_VISUAL",
+            estatus_entrega="ENTREGADO_DISPOSITIVO",
+        )
+        recientes = db.list_recent_notifications(limit=1)
+        return {
+            "ok": True,
+            "id": new_id,
+            "notificacion": recientes[0] if recientes else None,
+        }
+
     # --- Endpoints de Logs y Diagnóstico en Vivo ---
 
     @app.get("/api/logs")
@@ -282,6 +344,9 @@ def create_diagnostic_app(
         if raw_password and str(raw_password).strip():
             password_cifrada = protect_secret(str(raw_password).strip())
 
+        sucursal_id = payload.get("sucursal_id")
+        clave = payload.get("clave")
+
         saved_id = db.upsert_fuente_local(
             clock_id=clock_id,
             nombre=nombre,
@@ -292,6 +357,8 @@ def create_diagnostic_app(
             usuario=str(usuario).strip() if usuario else None,
             password_cifrada=password_cifrada,
             activo=activo,
+            sucursal_id=str(sucursal_id).strip() if sucursal_id else None,
+            clave=str(clave).strip() if clave else None,
         )
 
         return {"ok": True, "id": saved_id, "mensaje": "Reloj guardado exitosamente"}
@@ -339,6 +406,39 @@ def create_diagnostic_app(
             db.update_fuente_ping_status(clock_id, ok=ok, error=None if ok else msg)
 
         return {"ok": ok, "mensaje": msg, "latencia_ms": lat}
+
+    @app.post("/api/relojes/test-read")
+    def api_test_read_records(payload: dict[str, Any]) -> dict[str, Any]:
+        clock_id = payload.get("id")
+        tipo = str(payload.get("tipo", "ZKTECO")).strip().upper()
+        ip = str(payload.get("ip", "127.0.0.1")).strip()
+        puerto = int(payload.get("puerto", 4370 if tipo == "ZKTECO" else 80))
+        comm_key = int(payload.get("comm_key", 0))
+        usuario = payload.get("usuario")
+        password = payload.get("password")
+
+        if clock_id:
+            existing = db.get_fuente_local(clock_id)
+            if existing:
+                tipo = str(payload.get("tipo") or existing.tipo).strip().upper()
+                ip = str(payload.get("ip") or existing.ip).strip()
+                puerto = int(payload.get("puerto") or existing.puerto)
+                comm_key = int(payload.get("comm_key") if payload.get("comm_key") is not None else existing.comm_key)
+                usuario = payload.get("usuario") or existing.usuario
+                if not password and existing.password_cifrada:
+                    password = unprotect_secret(existing.password_cifrada)
+
+        ok, msg, count, sample = probe_device_read_records(
+            tipo=tipo,
+            ip=ip,
+            puerto=puerto,
+            usuario=str(usuario).strip() if usuario else None,
+            password=str(password).strip() if password else None,
+            comm_key=comm_key,
+            timeout=4.0,
+        )
+
+        return {"ok": ok, "mensaje": msg, "total_registros": count, "registros": sample}
 
     # --- Endpoints de Diagnóstico de la Nube ---
 
@@ -985,8 +1085,14 @@ def create_diagnostic_app(
             <input type="email" id="login-email" placeholder="admin@empresa.com">
           </div>
           <div class="form-group" style="margin-bottom: 16px;">
-            <label>Contraseña</label>
-            <input type="password" id="login-password" placeholder="••••••••">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <label for="login-password">Contraseña</label>
+              <button type="button" class="btn-secondary btn-sm" id="btn-toggle-login-password" aria-pressed="false" aria-label="Mostrar contraseña" onclick="toggleLoginPassword()">👁 Mostrar</button>
+            </div>
+            <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+            <div style="display: flex; justify-content: flex-end; margin-top: 6px;">
+              <a href="{server_url}/recuperar-contrasena" target="_blank" rel="noopener noreferrer" style="font-size: 12px; color: var(--accent, #0a84ff);">¿Olvidaste tu contraseña?</a>
+            </div>
           </div>
         </div>
 
@@ -1009,6 +1115,16 @@ def create_diagnostic_app(
   <script>
     let currentAuthMode = 'online';
     let currentUser = null;
+
+    function toggleLoginPassword() {{
+      const input = document.getElementById('login-password');
+      const btn = document.getElementById('btn-toggle-login-password');
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      btn.textContent = show ? '🙈 Ocultar' : '👁 Mostrar';
+      btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+      btn.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    }}
 
     function checkAuth() {{
       fetch('/api/auth/me')

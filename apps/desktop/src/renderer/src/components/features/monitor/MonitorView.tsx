@@ -1,9 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { DataTable, type DataTableColumnDef } from '../../ui/data-table/data-table';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card, CardHeader, CardContent } from '../../ui/card';
-import { agentApi, type AgentStatus, type QueuedPunchItem } from '../../../lib/agent-api';
+import {
+  agentApi,
+  type AgentStatus,
+  type QueuedPunchItem,
+  type TriggeredNotificationItem,
+} from '../../../lib/agent-api';
 import type { ExportColumn } from '../../../lib/export/exporters';
 import {
   Activity,
@@ -14,11 +19,61 @@ import {
   CheckCircle2,
   AlertTriangle,
   History,
+  Volume2,
+  BellRing,
+  X,
 } from 'lucide-react';
+
+async function playAgentChimeAndVoice(textoVoz: string, playAudio = true): Promise<void> {
+  if (!playAudio || typeof window === 'undefined') return;
+  try {
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const playTone = (freq: number, start: number, dur: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.22, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + dur);
+      };
+      playTone(523.25, now, 0.18);
+      playTone(783.99, now + 0.16, 0.28);
+      await new Promise((r) => setTimeout(r, 460));
+      void ctx.close().catch(() => {});
+    }
+
+    if ('speechSynthesis' in window && typeof window.SpeechSynthesisUtterance !== 'undefined') {
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(textoVoz);
+      utterance.lang = 'es-MX';
+      utterance.rate = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      const mxVoice =
+        voices.find((v) => v.lang.toLowerCase().includes('es-mx')) ??
+        voices.find((v) => v.lang.toLowerCase().startsWith('es'));
+      if (mxVoice) utterance.voice = mxVoice;
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch {
+    // Ignorar en entornos sin salida de audio
+  }
+}
 
 export const MonitorView: React.FC = () => {
   const [status, setStatus] = useState<AgentStatus | null>(null);
   const [punches, setPunches] = useState<QueuedPunchItem[]>([]);
+  const [activeNotif, setActiveNotif] = useState<TriggeredNotificationItem | null>(null);
+  const announcedIdsRef = useRef<Set<number>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [syncingManual, setSyncingManual] = useState(false);
   const [reconciling, setReconciling] = useState(false);
@@ -29,15 +84,59 @@ export const MonitorView: React.FC = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const [st, q] = await Promise.all([agentApi.getStatus(), agentApi.getQueue(50)]);
+      const [st, q, notifRes] = await Promise.all([
+        agentApi.getStatus(),
+        agentApi.getQueue(50),
+        agentApi.getRecentNotifications(10, true).catch(() => ({
+          ok: true,
+          no_leidas_count: 0,
+          notificaciones: [],
+        })),
+      ]);
       setStatus(st);
       setPunches(q.checadas);
+
+      const unread = notifRes.notificaciones ?? [];
+      const firstNew = unread.find((n) => !announcedIdsRef.current.has(n.id));
+      if (firstNew) {
+        announcedIdsRef.current.add(firstNew.id);
+        setActiveNotif(firstNew);
+        void playAgentChimeAndVoice(firstNew.texto_voz, firstNew.reproducir_audio);
+        void agentApi.markNotificationRead(firstNew.id).catch(() => {});
+      }
     } catch {
       // Ignorar fallo puntual
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  const handleSimulatePunchAlert = async () => {
+    try {
+      const res = await agentApi.simulateNotification({
+        codigo_empleado: '1001',
+        nombre_empleado: 'Alejandro Hernández',
+        tipo_marca: 'ENTRADA',
+        titulo: 'Firma de contrato en RH',
+        mensaje: 'Pasar a RH a firmar contrato',
+        texto_voz_personalizado:
+          'Hola {nombre}. Tienes un aviso de Recursos Humanos: {mensaje}',
+      });
+      if (res.notificacion) {
+        announcedIdsRef.current.add(res.notificacion.id);
+        setActiveNotif(res.notificacion);
+        await playAgentChimeAndVoice(
+          res.notificacion.texto_voz,
+          res.notificacion.reproducir_audio,
+        );
+        await agentApi.markNotificationRead(res.notificacion.id).catch(() => {});
+      }
+    } catch (err: unknown) {
+      setActionMsg(
+        `Error al simular aviso: ${err instanceof Error ? err.message : 'Error desconocido'}`,
+      );
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -179,6 +278,58 @@ export const MonitorView: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      {/* Notificación Visual + Audio Dinámico Personalizado al detectar Check-In / Check-Out */}
+      {activeNotif && (
+        <div
+          role="alert"
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-[var(--r-lg)] border-2 border-[var(--accent)] bg-[var(--surface)] p-4 shadow-[var(--shadow-2)]"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex w-10 h-10 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--accent)]">
+              <BellRing className="w-5 h-5 animate-bounce" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="default" className="text-[10px]">
+                  {activeNotif.tipo_marca === 'SALIDA'
+                    ? 'CHECK-OUT (SALIDA)'
+                    : 'CHECK-IN (ENTRADA)'}
+                </Badge>
+                <span className="font-mono text-xs font-bold text-[var(--text)]">
+                  #{activeNotif.codigo_empleado} · {activeNotif.nombre_empleado}
+                </span>
+              </div>
+              <h4 className="text-sm font-bold text-[var(--text)]">
+                {activeNotif.titulo}: “{activeNotif.mensaje}”
+              </h4>
+              <p className="text-xs text-[var(--text-2)]">
+                <strong>Voz personalizada (TTS):</strong> “{activeNotif.texto_voz}”
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs flex items-center gap-1"
+              onClick={() => void playAgentChimeAndVoice(activeNotif.texto_voz, true)}
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>Repetir Voz</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs"
+              onClick={() => setActiveNotif(null)}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Tarjetas de Métricas de Cola y Salud */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="border-[var(--separator)] bg-[var(--surface)]">
@@ -246,7 +397,18 @@ export const MonitorView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs flex items-center gap-1.5"
+            onClick={() => void handleSimulatePunchAlert()}
+            title="Probar notificación visual y audio personalizado en el agente"
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+            <span>Probar Aviso + Audio</span>
+          </Button>
+
           <Button
             variant="outline"
             size="sm"

@@ -301,3 +301,26 @@ class HikvisionDriver(BaseClockDriver):
             self.conectado = False
             self.ultimo_error = f"Error en reconciliación Hikvision: {exc}"
             return 0
+
+    def send_employee_message(self, employee_no: str, message: str) -> tuple[bool, str]:
+        """
+        Envía un mensaje personalizado / prompt a una terminal Hikvision ISAPI
+        para mostrarse al empleado al autenticar su rostro/huella, si el modelo lo soporta.
+        """
+        clean_emp = employee_no.strip()
+        clean_msg = message.strip()[:240]
+        if not clean_emp or not clean_msg:
+            return (False, "Número de empleado o mensaje vacío")
+        try:
+            if self.adapter and hasattr(self.adapter, "set_employee_prompt"):
+                ok = bool(self.adapter.set_employee_prompt(clean_emp, clean_msg))
+                return (
+                    ok,
+                    "Mensaje ISAPI configurado en terminal Hikvision"
+                    if ok
+                    else "La terminal Hikvision no aceptó el mensaje en pantalla",
+                )
+            return (False, "El modelo Hikvision no soporta mensajes personalizados ISAPI; usar fallback")
+        except Exception as exc:
+            return (False, f"Error enviando mensaje a Hikvision ISAPI: {exc}")
+

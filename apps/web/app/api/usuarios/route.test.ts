@@ -44,6 +44,15 @@ vi.mock('@/lib/server/supabase-admin', () => ({
           }),
         };
       }
+      if (table === 'sucursales') {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: vi.fn().mockResolvedValue({ data: [], error: null }),
+            }),
+          }),
+        };
+      }
       throw new Error(`Unexpected table ${table}`);
     },
   }),

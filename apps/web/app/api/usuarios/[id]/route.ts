@@ -48,6 +48,9 @@ export async function PATCH(
       ...(parsed.data.activo !== undefined
         ? { activo: parsed.data.activo }
         : {}),
+      ...(parsed.data.sucursal_id !== undefined
+        ? { sucursal_id: parsed.data.sucursal_id }
+        : {}),
       ...(parsed.data.nombre_completo !== undefined
         ? { nombre_completo: parsed.data.nombre_completo }
         : {}),
@@ -55,7 +58,7 @@ export async function PATCH(
     .eq('id', id)
     .eq('tenant_id', tenantId)
     .select(
-      'id, tenant_id, nombre_completo, email, rol, activo, auth_provider, created_at',
+      'id, tenant_id, sucursal_id, nombre_completo, email, rol, activo, auth_provider, created_at',
     )
     .maybeSingle();
 

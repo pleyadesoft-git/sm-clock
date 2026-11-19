@@ -31,10 +31,12 @@ export function roleRequiresMfa(rol: UserRole): boolean {
  */
 export const PUBLIC_PATHS = [
   '/login',
+  '/checador',
   '/invitacion',
   '/recuperar-contrasena',
   '/restablecer-contrasena',
   '/auth/callback',
+  '/api/checador',
   '/api/invitaciones/verificar',
   '/api/invitaciones/aceptar',
   '/api/auth/callback',
@@ -71,11 +73,13 @@ export const TENANT_ADMIN_ONLY_PATHS = [
   '/configuracion',
   '/empleados',
   '/sucursales',
+  '/mensajes',
   '/dashboard/empleados',
   '/api/usuarios',
   '/api/configuracion',
   '/api/empleados',
   '/api/sucursales',
+  '/api/mensajes',
 ] as const;
 
 function matchesPathPrefix(
@@ -254,22 +258,62 @@ export const WebAuthnFactorEnrollSchema = z.object({
 
 export type WebAuthnFactorEnroll = z.infer<typeof WebAuthnFactorEnrollSchema>;
 
-export const UpdateOwnProfileRequestSchema = z.object({
-  nombre_completo: safeSanitizedTextSchema({
-    min: 2,
-    max: 140,
-    minMessage: 'Ingresa tu nombre completo (mínimo 2 caracteres)',
-    maxMessage: 'El nombre completo no puede exceder 140 caracteres',
-    injectionMessage:
-      'El nombre completo contiene caracteres o código no permitido',
-  }),
-  email: safeEmailSchema('Ingresa un correo electrónico válido'),
-  password: z
-    .string()
-    .min(8, 'La contraseña debe tener al menos 8 caracteres')
-    .max(128, 'La contraseña excede la longitud permitida')
-    .optional(),
-});
+export const ResetPasswordFormSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, 'La contraseña debe tener al menos 8 caracteres')
+      .max(128, 'La contraseña excede la longitud permitida'),
+    confirm_password: z
+      .string()
+      .min(1, 'Confirma tu nueva contraseña'),
+  })
+  .refine((data) => data.password === data.confirm_password, {
+    message: 'Las contraseñas no coinciden',
+    path: ['confirm_password'],
+  });
+
+export type ResetPasswordFormValues = z.infer<typeof ResetPasswordFormSchema>;
+
+export const UpdateOwnProfileRequestSchema = z
+  .object({
+    nombre_completo: safeSanitizedTextSchema({
+      min: 2,
+      max: 140,
+      minMessage: 'Ingresa tu nombre completo (mínimo 2 caracteres)',
+      maxMessage: 'El nombre completo no puede exceder 140 caracteres',
+      injectionMessage:
+        'El nombre completo contiene caracteres o código no permitido',
+    }),
+    email: safeEmailSchema('Ingresa un correo electrónico válido'),
+    current_password: z
+      .string()
+      .min(1, 'Ingresa tu contraseña actual')
+      .max(128, 'La contraseña excede la longitud permitida')
+      .optional(),
+    password: z
+      .string()
+      .min(8, 'La contraseña debe tener al menos 8 caracteres')
+      .max(128, 'La contraseña excede la longitud permitida')
+      .optional(),
+    confirm_password: z
+      .string()
+      .max(128, 'La contraseña excede la longitud permitida')
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.password &&
+      data.confirm_password !== undefined &&
+      data.password !== data.confirm_password
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['confirm_password'],
+        message: 'Las contraseñas no coinciden',
+      });
+    }
+  });
 
 export type UpdateOwnProfileRequest = z.infer<
   typeof UpdateOwnProfileRequestSchema

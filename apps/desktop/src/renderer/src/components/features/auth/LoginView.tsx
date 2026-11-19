@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '../../ui/form';
 import { SegmentedControl } from '../../ui/segmented-control';
 import { useAuth } from '../../../context/AuthContext';
-import { ShieldCheck, KeyRound, Server, AlertCircle, Power } from 'lucide-react';
+import { ShieldCheck, KeyRound, Server, AlertCircle, Power, Eye, EyeOff } from 'lucide-react';
 import { ConfirmDialog } from '../../ui/confirm-dialog';
 
 const loginSchema = z.object({
@@ -33,12 +33,35 @@ export const LoginView: React.FC = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showQuitDialog, setShowQuitDialog] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleQuitApp = async () => {
     if (window.electronAPI?.quitApp) {
       await window.electronAPI.quitApp();
     } else {
       window.close();
+    }
+  };
+
+  // Abre el flujo de recuperación de contraseña de la app web (envío de link por email)
+  const handleForgotPassword = async () => {
+    const customServer = formCloud.getValues('serverUrl');
+    const webBase =
+      (showAdvanced && customServer ? customServer : undefined) ||
+      (import.meta.env.VITE_WEB_URL as string | undefined) ||
+      (import.meta.env.NEXT_PUBLIC_APP_URL as string | undefined) ||
+      'http://127.0.0.1:3000';
+    let recoveryUrl: string;
+    try {
+      recoveryUrl = new URL('/recuperar-contrasena', webBase).toString();
+    } catch {
+      setLoginError('La URL del servidor no es válida para recuperar la contraseña.');
+      return;
+    }
+    if (window.electronAPI?.openExternal) {
+      await window.electronAPI.openExternal(recoveryUrl);
+    } else {
+      window.open(recoveryUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -192,16 +215,46 @@ export const LoginView: React.FC = () => {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Contraseña</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Contraseña</FormLabel>
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((prev) => !prev)}
+                          aria-pressed={showPassword}
+                          aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] cursor-pointer"
+                        >
+                          {showPassword ? (
+                            <>
+                              <EyeOff className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Ocultar</span>
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+                              <span>Mostrar</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       <FormControl>
                         <Input
-                          type="password"
+                          type={showPassword ? 'text' : 'password'}
                           placeholder="••••••••"
                           autoComplete="current-password"
                           disabled={isSubmitting}
                           {...field}
                         />
                       </FormControl>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void handleForgotPassword()}
+                          className="text-[11px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
+                        >
+                          ¿Olvidaste tu contraseña?
+                        </button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

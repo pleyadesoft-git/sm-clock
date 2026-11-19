@@ -86,6 +86,8 @@ describe('POST /api/empleados — Alta de empleado y validación de código', ()
         body: JSON.stringify({
           codigo_empleado: '1001',
           nombre_completo: 'Nuevo Empleado',
+          pin_codigo: '482910',
+          sucursal_id: '11111111-0001-4000-8000-000000000001',
           estatus_empleado: 'A',
         }),
       }),
@@ -97,16 +99,59 @@ describe('POST /api/empleados — Alta de empleado y validación de código', ()
     expect(mockInsertSingle).not.toHaveBeenCalled();
   });
 
-  it('creates employee successfully when code is available', async () => {
+  it('rejects POST with 409 if 6-digit PIN is already assigned to another employee', async () => {
+    // 1. Código disponible
     mockSelectMaybeSingle.mockResolvedValueOnce({
       data: null,
       error: null,
     });
+    // 2. PIN duplicado
+    mockSelectMaybeSingle.mockResolvedValueOnce({
+      data: {
+        id: '22222222-2222-4222-8222-222222222222',
+        nombre_completo: 'Empleado Con Mismo PIN',
+        codigo_empleado: '1002',
+      },
+      error: null,
+    });
+
+    const res = await POST(
+      new Request('http://localhost/api/empleados', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          codigo_empleado: '1009',
+          nombre_completo: 'Nuevo Empleado',
+          pin_codigo: '482910',
+          sucursal_id: '11111111-0001-4000-8000-000000000001',
+          estatus_empleado: 'A',
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.error).toContain('El PIN "482910" ya está asignado');
+    expect(mockInsertSingle).not.toHaveBeenCalled();
+  });
+
+  it('creates employee successfully when code and PIN are available', async () => {
+    mockSelectMaybeSingle
+      .mockResolvedValueOnce({
+        data: null,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: null,
+        error: null,
+      });
     mockInsertSingle.mockResolvedValueOnce({
       data: {
         id: '33333333-3333-4333-8333-333333333333',
         codigo_empleado: '1001',
         nombre_completo: 'Nuevo Empleado',
+        pin_codigo: '482910',
+        sucursal_id: '11111111-0001-4000-8000-000000000001',
         estatus_empleado: 'A',
       },
       error: null,
@@ -119,6 +164,8 @@ describe('POST /api/empleados — Alta de empleado y validación de código', ()
         body: JSON.stringify({
           codigo_empleado: '1001',
           nombre_completo: 'Nuevo Empleado',
+          pin_codigo: '482910',
+          sucursal_id: '11111111-0001-4000-8000-000000000001',
           estatus_empleado: 'A',
         }),
       }),

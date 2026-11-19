@@ -222,3 +222,32 @@ export interface PaginatedResult<T> {
   pageSize: number;
   totalPages: number;
 }
+
+export const AdminTenantEmailSchema = z.object({
+  destinatario_email: safeEmailSchema(
+    'Ingresa un correo electrónico válido del destinatario',
+    150,
+  ),
+  destinatario_nombre: OptionalSanitizedTenantField(
+    150,
+    'El nombre del destinatario',
+  ),
+  asunto: safeSanitizedTextSchema({
+    min: 3,
+    max: 160,
+    minMessage: 'El asunto debe tener al menos 3 caracteres',
+    maxMessage: 'Máximo 160 caracteres',
+    injectionMessage: 'El asunto contiene caracteres o código no permitido',
+  }),
+  mensaje: safeSanitizedTextSchema({
+    min: 5,
+    max: 4000,
+    allowNewlines: true,
+    minMessage: 'El mensaje debe tener al menos 5 caracteres',
+    maxMessage: 'Máximo 4000 caracteres',
+    injectionMessage: 'El mensaje contiene caracteres o código no permitido',
+  }),
+});
+
+export type AdminTenantEmailInput = z.infer<typeof AdminTenantEmailSchema>;
+

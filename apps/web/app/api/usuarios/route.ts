@@ -35,11 +35,11 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const admin = createSupabaseServiceClient();
 
-  const [perfilesRes, invitacionesRes] = await Promise.all([
+  const [perfilesRes, invitacionesRes, sucursalesRes] = await Promise.all([
     admin
       .from('perfiles_usuarios')
       .select(
-        'id, nombre_completo, email, rol, activo, auth_provider, created_at',
+        'id, nombre_completo, email, rol, sucursal_id, activo, auth_provider, created_at',
       )
       .eq('tenant_id', tenantId)
       .is('deleted_at', null)
@@ -47,11 +47,16 @@ export async function GET(request: Request): Promise<NextResponse> {
     admin
       .from('invitaciones_usuarios')
       .select(
-        'id, nombre_completo, email, rol, estatus, expira_en, created_at',
+        'id, nombre_completo, email, rol, sucursal_id, estatus, expira_en, created_at',
       )
       .eq('tenant_id', tenantId)
       .neq('estatus', 'ACEPTADA')
       .order('created_at', { ascending: false }),
+    admin
+      .from('sucursales')
+      .select('id, clave, nombre')
+      .eq('tenant_id', tenantId)
+      .order('clave', { ascending: true }),
   ]);
 
   if (perfilesRes.error || invitacionesRes.error) {
@@ -59,6 +64,12 @@ export async function GET(request: Request): Promise<NextResponse> {
       { error: 'Error al consultar usuarios e invitaciones del tenant' },
       { status: 500 },
     );
+  }
+
+  const sucursalesList = sucursalesRes.data ?? [];
+  const sucursalNameMap = new Map<string, string>();
+  for (const s of sucursalesList) {
+    sucursalNameMap.set(s.id, `${s.clave} · ${s.nombre}`);
   }
 
   const nowMs = Date.now();
@@ -80,6 +91,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       nombre_completo: p.nombre_completo,
       email: p.email,
       rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
+      sucursal_id: p.sucursal_id,
+      sucursal_nombre: p.sucursal_id
+        ? (sucursalNameMap.get(p.sucursal_id) ?? null)
+        : null,
       estatus: 'ACTIVO',
       auth_provider: provider,
       created_at: p.created_at,
@@ -113,6 +128,10 @@ export async function GET(request: Request): Promise<NextResponse> {
         nombre_completo: inv.nombre_completo,
         email: inv.email,
         rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
+        sucursal_id: inv.sucursal_id,
+        sucursal_nombre: inv.sucursal_id
+          ? (sucursalNameMap.get(inv.sucursal_id) ?? null)
+          : null,
         estatus: computedStatus,
         auth_provider: 'INVITACION',
         created_at: inv.created_at,
@@ -137,6 +156,10 @@ export async function GET(request: Request): Promise<NextResponse> {
       nombre_completo: p.nombre_completo,
       email: p.email,
       rol: parsedRol.success ? parsedRol.data : 'OPERADOR',
+      sucursal_id: p.sucursal_id,
+      sucursal_nombre: p.sucursal_id
+        ? (sucursalNameMap.get(p.sucursal_id) ?? null)
+        : null,
       estatus: 'INACTIVO',
       auth_provider: provider,
       created_at: p.created_at,
@@ -167,6 +190,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     {
       data: filtered,
       total: filtered.length,
+      sucursales: sucursalesList,
     },
     {
       headers: {
@@ -242,6 +266,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     .from('invitaciones_usuarios')
     .insert({
       tenant_id: tenantId,
+      sucursal_id: parsed.data.sucursal_id,
       email: parsed.data.email,
       nombre_completo: parsed.data.nombre_completo,
       rol: parsed.data.rol,
@@ -251,7 +276,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       expira_en: expiraEn.toISOString(),
     })
     .select(
-      'id, tenant_id, email, nombre_completo, rol, estatus, expira_en, created_at',
+      'id, tenant_id, sucursal_id, email, nombre_completo, rol, estatus, expira_en, created_at',
     )
     .single();
 

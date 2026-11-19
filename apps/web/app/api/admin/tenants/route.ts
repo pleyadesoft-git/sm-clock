@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   sanitizeSearchQuery,
@@ -8,10 +8,27 @@ import {
   type PaginatedResult,
 } from '@sm-clock/contracts';
 import { AuthError, recordAuditLog, requireRoles } from '@/lib/server/auth';
+import { getPublicAppOrigin } from '@/lib/server/origin';
 import { broadcastAdminEvent } from '@/lib/server/realtime-broadcast';
+import {
+  buildInvitationEmailTemplate,
+  sendTenantEmail,
+  type SendEmailResult,
+} from '@/lib/server/smtp-mailer';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
 
+const ADMIN_INVITE_TTL_DAYS = 7;
+
 type TenantRow = Database['public']['Tables']['tenants']['Row'];
+
+export interface TenantInfraResumen {
+  sucursales_total: number;
+  sucursales_activas: number;
+  relojes_total: number;
+  relojes_activos: number;
+  relojes_con_error: number;
+  administradores_total: number;
+}
 
 export interface TenantWithInitialAdmin extends TenantRow {
   admin_inicial?: {
@@ -20,6 +37,9 @@ export interface TenantWithInitialAdmin extends TenantRow {
     email: string;
     auth_provider: string;
   } | null;
+  resumen_infraestructura?: TenantInfraResumen;
+  inviteUrl?: string;
+  emailDelivery?: SendEmailResult;
 }
 
 export async function GET(request: NextRequest) {
@@ -82,18 +102,49 @@ export async function GET(request: NextRequest) {
       string,
       { id: string; nombre_completo: string; email: string; auth_provider: string }
     >();
+    const infraByTenant = new Map<string, TenantInfraResumen>();
+
+    for (const tenantId of tenantIds) {
+      infraByTenant.set(tenantId, {
+        sucursales_total: 0,
+        sucursales_activas: 0,
+        relojes_total: 0,
+        relojes_activos: 0,
+        relojes_con_error: 0,
+        administradores_total: 0,
+      });
+    }
 
     if (tenantIds.length > 0) {
-      const { data: admins } = await supabase
-        .from('perfiles_usuarios')
-        .select('id, tenant_id, nombre_completo, email, auth_provider, created_at')
-        .in('tenant_id', tenantIds)
-        .eq('rol', 'ADMIN_EMPRESA')
-        .eq('activo', true)
-        .order('created_at', { ascending: true });
+      const [{ data: admins }, { data: sucursales }, { data: fuentes }] =
+        await Promise.all([
+          supabase
+            .from('perfiles_usuarios')
+            .select(
+              'id, tenant_id, nombre_completo, email, auth_provider, created_at',
+            )
+            .in('tenant_id', tenantIds)
+            .eq('rol', 'ADMIN_EMPRESA')
+            .eq('activo', true)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('sucursales')
+            .select('id, tenant_id, activa')
+            .in('tenant_id', tenantIds),
+          supabase
+            .from('fuentes_asistencia')
+            .select('id, tenant_id, activo, ultimo_error')
+            .in('tenant_id', tenantIds),
+        ]);
 
       for (const adm of admins ?? []) {
-        if (adm.tenant_id && !adminByTenant.has(adm.tenant_id)) {
+        if (!adm.tenant_id) continue;
+        const resumen = infraByTenant.get(adm.tenant_id);
+        if (resumen) {
+          resumen.administradores_total += 1;
+        }
+        if (!adminByTenant.has(adm.tenant_id)) {
           adminByTenant.set(adm.tenant_id, {
             id: adm.id,
             nombre_completo: adm.nombre_completo,
@@ -102,11 +153,40 @@ export async function GET(request: NextRequest) {
           });
         }
       }
+
+      for (const suc of sucursales ?? []) {
+        const resumen = infraByTenant.get(suc.tenant_id);
+        if (!resumen) continue;
+        resumen.sucursales_total += 1;
+        if (suc.activa) {
+          resumen.sucursales_activas += 1;
+        }
+      }
+
+      for (const fuente of fuentes ?? []) {
+        const resumen = infraByTenant.get(fuente.tenant_id);
+        if (!resumen) continue;
+        resumen.relojes_total += 1;
+        if (fuente.activo) {
+          resumen.relojes_activos += 1;
+        }
+        if (fuente.activo && fuente.ultimo_error) {
+          resumen.relojes_con_error += 1;
+        }
+      }
     }
 
     const enrichedRows: TenantWithInitialAdmin[] = rows.map((t) => ({
       ...t,
       admin_inicial: adminByTenant.get(t.id) ?? null,
+      resumen_infraestructura: infraByTenant.get(t.id) ?? {
+        sucursales_total: 0,
+        sucursales_activas: 0,
+        relojes_total: 0,
+        relojes_activos: 0,
+        relojes_con_error: 0,
+        administradores_total: 0,
+      },
     }));
 
     const total = count ?? 0;
@@ -319,6 +399,60 @@ export async function POST(request: NextRequest) {
       // Continuar si ya existiera
     }
 
+    // 6. Crear invitación por email para que el Admin inicial pueda crear su contraseña
+    //    (permite acceso a la app del tenant y a los agentes sin necesidad de cuenta Gmail)
+    let inviteUrl: string | undefined;
+    let emailDelivery: SendEmailResult | undefined;
+    try {
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+      const expiraEn = new Date(
+        Date.now() + ADMIN_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000,
+      );
+
+      const { error: inviteInsertError } = await supabase
+        .from('invitaciones_usuarios')
+        .insert({
+          tenant_id: created.id,
+          email: adminEmail,
+          nombre_completo: adminNombre,
+          rol: 'ADMIN_EMPRESA',
+          token_hash: tokenHash,
+          estatus: 'PENDIENTE',
+          invitado_por: ctx.userId,
+          expira_en: expiraEn.toISOString(),
+        });
+
+      if (!inviteInsertError) {
+        const origin = getPublicAppOrigin(request);
+        inviteUrl = `${origin}/invitacion/${rawToken}`;
+
+        const expiraEnFormatted = new Intl.DateTimeFormat('es-MX', {
+          timeZone: 'America/Tijuana',
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(expiraEn);
+
+        const emailTemplate = buildInvitationEmailTemplate({
+          nombreCompleto: adminNombre,
+          tenantNombre: created.nombre_comercial,
+          rol: 'ADMIN_EMPRESA',
+          inviteUrl,
+          expiraEnFormatted,
+        });
+
+        emailDelivery = await sendTenantEmail({
+          tenantId: created.id,
+          to: adminEmail,
+          subject: emailTemplate.subject,
+          html: emailTemplate.html,
+          text: emailTemplate.text,
+        });
+      }
+    } catch {
+      // No bloquear la creación del tenant si falla el envío de correo
+    }
+
     await recordAuditLog({
       tenantId: created.id,
       actorId: ctx.userId,
@@ -330,6 +464,7 @@ export async function POST(request: NextRequest) {
         admin_inicial_id: authUserId,
         admin_inicial_email: adminEmail,
         admin_auth_provider: 'GOOGLE',
+        invite_email_delivered: emailDelivery?.delivered ?? false,
       },
       ip: request.headers.get('x-forwarded-for'),
     });
@@ -349,6 +484,8 @@ export async function POST(request: NextRequest) {
         email: adminEmail,
         auth_provider: 'GOOGLE',
       },
+      inviteUrl,
+      emailDelivery,
     };
 
     return NextResponse.json(responsePayload, { status: 201 });

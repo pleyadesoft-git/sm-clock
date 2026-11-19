@@ -292,3 +292,24 @@ class ZKTecoDriver(BaseClockDriver):
             self.conectado = False
             self.ultimo_error = f"Error en reconciliación: {exc}"
             return 0
+
+    def send_employee_message(self, user_id: str, message: str, duration_minutes: int = 1440) -> tuple[bool, str]:
+        """
+        Envía un mensaje personal (SMS / Personal Message) a la pantalla del reloj ZKTeco
+        asociado al código de empleado (`user_id`), si el firmware/dispositivo lo permite.
+        """
+        clean_uid = user_id.strip()
+        clean_msg = message.strip()[:240]
+        if not clean_uid or not clean_msg:
+            return (False, "Código de empleado o mensaje vacío")
+        try:
+            if hasattr(self.adapter, "set_user_sms"):
+                ok = bool(self.adapter.set_user_sms(clean_uid, clean_msg, duration_minutes))
+                return (
+                    ok,
+                    "Mensaje cargado en pantalla ZKTeco" if ok else "El reloj ZKTeco rechazó el mensaje SMS",
+                )
+            return (False, "El modelo ZKTeco no soporta SMS en pantalla; usar fallback SMTP/WhatsApp")
+        except Exception as exc:
+            return (False, f"Error enviando SMS a ZKTeco: {exc}")
+

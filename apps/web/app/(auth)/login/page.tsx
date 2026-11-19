@@ -402,6 +402,26 @@ function LoginFormContent() {
                 : 'Continuar con Google'}
             </span>
           </Button>
+
+          {/* Acceso directo al Kiosco Checador para Empleados (sin login administrativo) */}
+          <div className="border-t border-[var(--separator)] pt-[var(--s-3)]">
+            <Link
+              href="/checador"
+              className="flex w-full items-center justify-between rounded-[var(--r-lg)] border border-[var(--accent)] bg-[var(--accent-soft)] px-[var(--s-4)] py-[var(--s-3)] text-left transition-opacity hover:opacity-90"
+            >
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
+                  ¿Eres Empleado? · Sin Iniciar Sesión
+                </p>
+                <p className="text-sm font-semibold text-[var(--text)]">
+                  Abrir Kiosco de Check-In y Check-Out
+                </p>
+                <p className="text-xs text-[var(--text-2)]">
+                  Registra tu entrada o salida con tu PIN de 6 dígitos, Huella/FaceID o Reconocimiento Facial.
+                </p>
+              </div>
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

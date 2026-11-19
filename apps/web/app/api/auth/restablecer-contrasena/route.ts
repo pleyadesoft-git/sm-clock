@@ -82,9 +82,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { data: perfil } = await admin
     .from('perfiles_usuarios')
-    .select('tenant_id')
+    .select('tenant_id, auth_provider')
     .eq('id', userId)
     .maybeSingle();
+
+  if (perfil?.auth_provider === 'GOOGLE') {
+    await admin
+      .from('perfiles_usuarios')
+      .update({ auth_provider: 'BOTH' })
+      .eq('id', userId);
+  }
 
   await recordAuditLog({
     tenantId: perfil?.tenant_id ?? null,

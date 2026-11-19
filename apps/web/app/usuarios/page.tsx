@@ -49,9 +49,16 @@ import { Sheet } from '@/components/ui/sheet';
 import { useToast } from '@/components/ui/toast';
 import type { ExportColumn } from '@/lib/export/exporters';
 
+interface SucursalOption {
+  id: string;
+  clave: string;
+  nombre: string;
+}
+
 interface UsuariosResponse {
   data: TenantUserRow[];
   total: number;
+  sucursales?: SucursalOption[];
 }
 
 export default function UsuariosPage() {
@@ -82,6 +89,7 @@ export default function UsuariosPage() {
       email: '',
       nombre_completo: '',
       rol: 'OPERADOR',
+      sucursal_id: '',
     },
     mode: 'onTouched',
   });
@@ -91,6 +99,7 @@ export default function UsuariosPage() {
     null,
   );
   const [editRol, setEditRol] = React.useState<TenantUserRole>('OPERADOR');
+  const [editSucursalId, setEditSucursalId] = React.useState<string>('');
   const [editActivo, setEditActivo] = React.useState(true);
   const [updatingUser, setUpdatingUser] = React.useState(false);
 
@@ -109,6 +118,8 @@ export default function UsuariosPage() {
     },
   });
 
+  const sucursales = data?.sucursales ?? [];
+
   const { status: realtimeState } = useTenantChannel({
     queryKeysToInvalidate: [['usuarios-tenant']],
     events: ['*'],
@@ -119,6 +130,7 @@ export default function UsuariosPage() {
       email: '',
       nombre_completo: '',
       rol: 'OPERADOR',
+      sucursal_id: sucursales[0]?.id ?? '',
     });
     setInviteOpen(true);
   }
@@ -126,6 +138,7 @@ export default function UsuariosPage() {
   function openEditUserSheet(row: TenantUserRow) {
     setEditingUser(row);
     setEditRol(row.rol === 'ADMIN_EMPRESA' ? 'ADMIN_EMPRESA' : 'OPERADOR');
+    setEditSucursalId(row.sucursal_id ?? sucursales[0]?.id ?? '');
     setEditActivo(row.estatus === 'ACTIVO');
   }
 
@@ -175,6 +188,7 @@ export default function UsuariosPage() {
     const parsed = UpdateTenantUserRequestSchema.safeParse({
       rol: editRol,
       activo: editActivo,
+      ...(editSucursalId ? { sucursal_id: editSucursalId } : {}),
     });
     if (!parsed.success) {
       toast({
@@ -317,6 +331,16 @@ export default function UsuariosPage() {
         },
       },
       {
+        id: 'sucursal_nombre',
+        accessorKey: 'sucursal_nombre',
+        header: 'Planta / Sucursal',
+        cell: ({ row }) => (
+          <span className="text-xs font-medium text-[var(--text-2)]">
+            {row.original.sucursal_nombre ?? 'General / Todas'}
+          </span>
+        ),
+      },
+      {
         id: 'estatus',
         accessorKey: 'estatus',
         header: 'Estatus',
@@ -394,7 +418,7 @@ export default function UsuariosPage() {
         },
       },
     ],
-    [],
+    [sucursales],
   );
 
   const exportColumns = React.useMemo<ExportColumn<TenantUserRow>[]>(
@@ -405,6 +429,10 @@ export default function UsuariosPage() {
         header: 'Rol',
         accessor: (r: TenantUserRow) =>
           r.rol === 'ADMIN_EMPRESA' ? 'Admin' : 'Operador',
+      },
+      {
+        header: 'Sucursal',
+        accessor: (r: TenantUserRow) => r.sucursal_nombre ?? '',
       },
       { header: 'Estatus', accessor: (r: TenantUserRow) => r.estatus },
       { header: 'Tipo', accessor: (r: TenantUserRow) => r.tipo_registro },
@@ -619,6 +647,34 @@ export default function UsuariosPage() {
 
             <FormField
               control={inviteForm.control}
+              name="sucursal_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Planta / Sucursal Asignada (Obligatoria)</FormLabel>
+                  <FormControl>
+                    <select
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      aria-invalid={Boolean(
+                        inviteForm.formState.errors.sucursal_id,
+                      )}
+                      className="ios-input w-full px-[var(--s-3)] text-sm"
+                    >
+                      <option value="">Selecciona una sucursal…</option>
+                      {sucursales.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.clave} — {s.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={inviteForm.control}
               name="rol"
               render={({ field }) => (
                 <FormItem>
@@ -683,13 +739,13 @@ export default function UsuariosPage() {
         </Form>
       </Sheet>
 
-      {/* Sheet para Editar Rol / Estatus de un Usuario Activo */}
+      {/* Sheet para Editar Rol / Sucursal / Estatus de un Usuario Activo */}
       <Sheet
         open={Boolean(editingUser)}
         onOpenChange={(open) => {
           if (!open) setEditingUser(null);
         }}
-        title="Permisos del usuario"
+        title="Permisos y sucursal del usuario"
         description={
           editingUser
             ? `${editingUser.nombre_completo} (${editingUser.email})`
@@ -720,6 +776,27 @@ export default function UsuariosPage() {
           onSubmit={(e) => void handleUpdateUser(e)}
           className="flex flex-col gap-[var(--s-4)]"
         >
+          <div>
+            <label
+              htmlFor="edit-user-sucursal"
+              className="mb-[var(--s-1)] block text-xs font-semibold text-[var(--text-2)]"
+            >
+              Planta / Sucursal Asignada (Obligatoria)
+            </label>
+            <select
+              id="edit-user-sucursal"
+              value={editSucursalId}
+              onChange={(e) => setEditSucursalId(e.target.value)}
+              className="ios-input w-full px-[var(--s-3)] text-sm"
+            >
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.clave} — {s.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <fieldset className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--separator)] p-[var(--s-3)]">
             <legend className="px-[var(--s-1)] text-xs font-bold uppercase tracking-wider text-[var(--text-2)]">
               Rol del usuario

@@ -70,6 +70,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   const ALLOWED_SORT_COLUMNS = [
     'codigo_empleado',
     'nombre_completo',
+    'email',
+    'pin_codigo',
     'credencial',
     'departamento',
     'puesto',
@@ -90,7 +92,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   let query = admin
     .from('empleados')
     .select(
-      '*, sucursales(id, clave, nombre)',
+      '*, sucursales(id, clave, nombre, latitud, longitud, radio_geocerca_m)',
       { count: 'exact' },
     )
     .eq('tenant_id', tenantId)
@@ -98,7 +100,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (search) {
     query = query.or(
-      `codigo_empleado.ilike.%${search}%,nombre_completo.ilike.%${search}%,departamento.ilike.%${search}%`,
+      `codigo_empleado.ilike.%${search}%,nombre_completo.ilike.%${search}%,email.ilike.%${search}%,departamento.ilike.%${search}%`,
     );
   }
 
@@ -119,6 +121,23 @@ export async function GET(request: Request): Promise<NextResponse> {
       { error: 'Error al consultar empleados' },
       { status: 500 },
     );
+  }
+
+  // Consultar conteo de credenciales WebAuthn por empleado
+  const empleadoIds = (rows ?? []).map((r) => r.id);
+  const webauthnCountMap = new Map<string, number>();
+  if (empleadoIds.length > 0) {
+    const { data: creds } = await admin
+      .from('empleado_webauthn_credenciales')
+      .select('empleado_id')
+      .eq('tenant_id', tenantId)
+      .in('empleado_id', empleadoIds);
+    for (const c of creds ?? []) {
+      webauthnCountMap.set(
+        c.empleado_id,
+        (webauthnCountMap.get(c.empleado_id) ?? 0) + 1,
+      );
+    }
   }
 
   // Generar URLs firmadas de corta vida (10 min) para las miniaturas y fotos
@@ -146,6 +165,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const enriched = (rows ?? []).map((r) => ({
     ...r,
+    webauthn_credenciales_count: webauthnCountMap.get(r.id) ?? 0,
     foto_thumb_signed_url: r.foto_thumb_path
       ? (signedMap.get(r.foto_thumb_path) ?? null)
       : null,
@@ -156,7 +176,7 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const { data: sucursales } = await admin
     .from('sucursales')
-    .select('id, clave, nombre')
+    .select('id, clave, nombre, latitud, longitud, radio_geocerca_m')
     .eq('tenant_id', tenantId)
     .order('clave', { ascending: true });
 
@@ -207,7 +227,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   const parsed = EmpleadoCreateSchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Datos del empleado inválidos', details: parsed.error.issues },
+      {
+        error:
+          parsed.error.issues[0]?.message ?? 'Datos del empleado inválidos',
+        details: parsed.error.issues,
+      },
       { status: 422 },
     );
   }
@@ -230,16 +254,39 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  if (parsed.data.pin_codigo) {
+    const { data: duplicatePin } = await admin
+      .from('empleados')
+      .select('id, nombre_completo, codigo_empleado')
+      .eq('tenant_id', tenantId)
+      .eq('pin_codigo', parsed.data.pin_codigo)
+      .maybeSingle();
+
+    if (duplicatePin) {
+      return NextResponse.json(
+        {
+          error: `El PIN "${parsed.data.pin_codigo}" ya está asignado a ${duplicatePin.nombre_completo} (#${duplicatePin.codigo_empleado}). Elige otro PIN de 6 dígitos.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data: created, error } = await admin
     .from('empleados')
     .insert({
       tenant_id: tenantId,
       codigo_empleado: parsed.data.codigo_empleado,
       nombre_completo: parsed.data.nombre_completo,
+      email: parsed.data.email ?? null,
+      telefono_whatsapp: parsed.data.telefono_whatsapp ?? null,
+      pin_codigo: parsed.data.pin_codigo,
+      biometria_facial_activa: parsed.data.biometria_facial_activa ?? false,
+      webauthn_activo: parsed.data.webauthn_activo ?? false,
       credencial: parsed.data.credencial ?? null,
       departamento: parsed.data.departamento ?? null,
       puesto: parsed.data.puesto ?? null,
-      sucursal_id: parsed.data.sucursal_id ?? null,
+      sucursal_id: parsed.data.sucursal_id,
       estatus_empleado: parsed.data.estatus_empleado,
     })
     .select('*')
@@ -247,7 +294,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   if (error || !created) {
     return NextResponse.json(
-      { error: 'No fue posible registrar el empleado (verifica que el código no exista)' },
+      { error: 'No fue posible registrar el empleado (verifica que el código y el PIN no existan)' },
       { status: 409 },
     );
   }
@@ -259,6 +306,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     detalle: {
       empleado_id: created.id,
       codigo_empleado: created.codigo_empleado,
+      sucursal_id: created.sucursal_id,
     },
   });
 
@@ -302,7 +350,11 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   const parsed = EmpleadoUpdateSchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Datos de actualización inválidos', details: parsed.error.issues },
+      {
+        error:
+          parsed.error.issues[0]?.message ?? 'Datos de actualización inválidos',
+        details: parsed.error.issues,
+      },
       { status: 422 },
     );
   }
@@ -312,6 +364,11 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     sincronizado_en: string;
     codigo_empleado?: string;
     nombre_completo?: string;
+    email?: string | null;
+    telefono_whatsapp?: string | null;
+    pin_codigo?: string | null;
+    biometria_facial_activa?: boolean;
+    webauthn_activo?: boolean;
     credencial?: string | null;
     departamento?: string | null;
     puesto?: string | null;
@@ -325,6 +382,21 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   }
   if (parsed.data.nombre_completo !== undefined) {
     updateData.nombre_completo = parsed.data.nombre_completo;
+  }
+  if (parsed.data.email !== undefined) {
+    updateData.email = parsed.data.email;
+  }
+  if (parsed.data.telefono_whatsapp !== undefined) {
+    updateData.telefono_whatsapp = parsed.data.telefono_whatsapp;
+  }
+  if (parsed.data.pin_codigo !== undefined) {
+    updateData.pin_codigo = parsed.data.pin_codigo;
+  }
+  if (parsed.data.biometria_facial_activa !== undefined) {
+    updateData.biometria_facial_activa = parsed.data.biometria_facial_activa;
+  }
+  if (parsed.data.webauthn_activo !== undefined) {
+    updateData.webauthn_activo = parsed.data.webauthn_activo;
   }
   if (parsed.data.credencial !== undefined) {
     updateData.credencial = parsed.data.credencial;
@@ -361,6 +433,25 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     }
   }
 
+  if (parsed.data.pin_codigo) {
+    const { data: duplicatePin } = await admin
+      .from('empleados')
+      .select('id, nombre_completo, codigo_empleado')
+      .eq('tenant_id', tenantId)
+      .eq('pin_codigo', parsed.data.pin_codigo)
+      .neq('id', parsed.data.id)
+      .maybeSingle();
+
+    if (duplicatePin) {
+      return NextResponse.json(
+        {
+          error: `El PIN "${parsed.data.pin_codigo}" ya está asignado a ${duplicatePin.nombre_completo} (#${duplicatePin.codigo_empleado}). Elige otro PIN de 6 dígitos.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data: updated, error } = await admin
     .from('empleados')
     .update(updateData)
@@ -383,6 +474,7 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     detalle: {
       empleado_id: updated.id,
       codigo_empleado: updated.codigo_empleado,
+      sucursal_id: updated.sucursal_id,
     },
   });
 

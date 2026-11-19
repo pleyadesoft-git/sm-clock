@@ -6,14 +6,23 @@ import {
   AlertCircle,
   Camera,
   CheckCircle2,
+  Dices,
+  ExternalLink,
+  Fingerprint,
+  KeyRound,
   Loader2,
+  Mail,
   Pencil,
   Plus,
+  Send,
+  ScanFace,
+  Trash2,
   UserCheck,
   Users,
   UserX,
   X,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import {
@@ -28,6 +37,7 @@ import {
   EmpleadoCreateSchema,
   EmpleadoUpdateSchema,
   type ValidarCodigoEmpleadoResponse,
+  type ValidarPinEmpleadoResponse,
 } from '@sm-clock/contracts';
 import type { z } from 'zod';
 
@@ -37,6 +47,10 @@ import {
   PhotoUploader,
   type StagedPhotoPayload,
 } from '@/components/features/empleados/photo-uploader';
+import {
+  createEmployeeWebAuthnCredential,
+  isWebAuthnAvailable,
+} from '@/lib/biometrics/webauthn-client';
 import { useTenantChannel } from '@/lib/realtime/use-tenant-channel';
 import { useCurrentUser } from '@/lib/auth/use-current-user';
 import { AppShell } from '@/components/layout/app-shell';
@@ -59,6 +73,12 @@ type EmpleadoRow = {
   codigo_empleado: string;
   credencial: string | null;
   nombre_completo: string;
+  email: string | null;
+  telefono_whatsapp?: string | null;
+  pin_codigo: string | null;
+  biometria_facial_activa: boolean;
+  webauthn_activo: boolean;
+  webauthn_credenciales_count?: number;
   departamento: string | null;
   puesto: string | null;
   estatus_empleado: 'A' | 'I';
@@ -87,9 +107,25 @@ interface EmpleadosResponse {
   sucursales: SucursalOption[];
 }
 
+interface WebAuthnCredentialItem {
+  id: string;
+  empleado_id: string;
+  credential_id: string;
+  algoritmo: number;
+  nombre_dispositivo: string;
+  transports: string[];
+  ultimo_uso_en: string | null;
+  created_at: string;
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((p) => p.charAt(0).toUpperCase()).join('') || 'EM';
+}
+
+function generateRandom6DigitPin(): string {
+  const n = Math.floor(100000 + Math.random() * 900000);
+  return String(n);
 }
 
 export default function EmpleadosPage() {
@@ -111,16 +147,31 @@ export default function EmpleadosPage() {
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<EmpleadoRow | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [sendingPinEmailId, setSendingPinEmailId] = React.useState<
+    string | null
+  >(null);
+  const [deviceNickname, setDeviceNickname] = React.useState(
+    'Dispositivo Biométrico',
+  );
+  const [enrollingWebAuthn, setEnrollingWebAuthn] = React.useState(false);
+  const [revokingCredId, setRevokingCredId] = React.useState<string | null>(
+    null,
+  );
 
   const form = useForm<EmpleadoFormInput, unknown, EmpleadoFormOutput>({
     resolver: zodResolver(EmpleadoCreateSchema),
     defaultValues: {
       codigo_empleado: '',
       nombre_completo: '',
+      email: '',
+      telefono_whatsapp: '',
+      pin_codigo: '',
+      biometria_facial_activa: true,
+      webauthn_activo: false,
       credencial: '',
       departamento: '',
       puesto: '',
-      sucursal_id: null,
+      sucursal_id: '',
       estatus_empleado: 'A',
     },
     mode: 'onTouched',
@@ -145,7 +196,28 @@ export default function EmpleadosPage() {
     status: 'idle',
   });
 
+  type PinCheckState =
+    | { status: 'idle' }
+    | { status: 'checking'; pin: string }
+    | { status: 'available'; pin: string }
+    | {
+        status: 'unavailable';
+        pin: string;
+        empleadoExistente?: {
+          id: string;
+          nombre: string;
+          codigo_empleado: string;
+          estatus: 'A' | 'I';
+        } | null;
+      }
+    | { status: 'error'; pin: string; message: string };
+
+  const [pinCheckState, setPinCheckState] = React.useState<PinCheckState>({
+    status: 'idle',
+  });
+
   const codigoValue = form.watch('codigo_empleado');
+  const pinValue = form.watch('pin_codigo');
 
   React.useEffect(() => {
     if (!sheetOpen) {
@@ -240,6 +312,94 @@ export default function EmpleadosPage() {
     };
   }, [codigoValue, editing, form, sheetOpen]);
 
+  // Validación en tiempo real de unicidad del PIN de 6 dígitos
+  React.useEffect(() => {
+    if (!sheetOpen) {
+      setPinCheckState({ status: 'idle' });
+      return;
+    }
+
+    const trimmed = (pinValue ?? '').trim();
+
+    if (editing && editing.pin_codigo && trimmed === editing.pin_codigo.trim()) {
+      setPinCheckState({ status: 'available', pin: trimmed });
+      if (form.formState.errors.pin_codigo?.type === 'manual') {
+        form.clearErrors('pin_codigo');
+      }
+      return;
+    }
+
+    if (!/^\d{6}$/.test(trimmed)) {
+      setPinCheckState({ status: 'idle' });
+      if (form.formState.errors.pin_codigo?.type === 'manual') {
+        form.clearErrors('pin_codigo');
+      }
+      return;
+    }
+
+    setPinCheckState({ status: 'checking', pin: trimmed });
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const queryParams = new URLSearchParams({ pin: trimmed });
+        if (editing) {
+          queryParams.set('excludeId', editing.id);
+        }
+        const res = await fetch(
+          `/api/empleados/validar-pin?${queryParams.toString()}`,
+        );
+
+        if (!active) return;
+
+        if (!res.ok) {
+          setPinCheckState({
+            status: 'error',
+            pin: trimmed,
+            message: 'No fue posible verificar la unicidad del PIN.',
+          });
+          return;
+        }
+
+        const data = (await res.json()) as ValidarPinEmpleadoResponse;
+        if (!active) return;
+
+        if (data.disponible) {
+          setPinCheckState({ status: 'available', pin: trimmed });
+          if (form.formState.errors.pin_codigo?.type === 'manual') {
+            form.clearErrors('pin_codigo');
+          }
+        } else {
+          setPinCheckState({
+            status: 'unavailable',
+            pin: trimmed,
+            empleadoExistente: data.empleadoExistente,
+          });
+          const detail = data.empleadoExistente
+            ? `El PIN "${trimmed}" ya está asignado a ${data.empleadoExistente.nombre} (#${data.empleadoExistente.codigo_empleado}).`
+            : `El PIN "${trimmed}" ya está en uso en la empresa.`;
+          form.setError('pin_codigo', {
+            type: 'manual',
+            message: detail,
+          });
+        }
+      } catch {
+        if (active) {
+          setPinCheckState({
+            status: 'error',
+            pin: trimmed,
+            message: 'Error de red al verificar PIN.',
+          });
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [pinValue, editing, form, sheetOpen]);
+
   const { data, isLoading } = useQuery<EmpleadosResponse>({
     queryKey: [
       'empleados-list',
@@ -274,6 +434,26 @@ export default function EmpleadosPage() {
 
   const sucursales = data?.sucursales ?? [];
 
+  // Consultar credenciales WebAuthn del empleado en edición
+  const { data: webauthnListData, refetch: refetchWebAuthn } = useQuery<{
+    data: WebAuthnCredentialItem[];
+  }>({
+    queryKey: ['empleado-webauthn', editing?.id],
+    enabled: Boolean(sheetOpen && editing?.id),
+    queryFn: async () => {
+      if (!editing?.id) {
+        return { data: [] };
+      }
+      const res = await fetch(`/api/empleados/${editing.id}/webauthn`);
+      if (!res.ok) {
+        return { data: [] };
+      }
+      return (await res.json()) as { data: WebAuthnCredentialItem[] };
+    },
+  });
+
+  const webauthnCredentials = webauthnListData?.data ?? [];
+
   const { data: currentUser } = useCurrentUser();
   const effectiveTenantId =
     currentUser?.tenantId ??
@@ -289,6 +469,7 @@ export default function EmpleadosPage() {
     React.useState<StagedPhotoPayload | null>(null);
 
   const photoSectionRef = React.useRef<HTMLDivElement | null>(null);
+  const biometriaSectionRef = React.useRef<HTMLDivElement | null>(null);
   const [statusTarget, setStatusTarget] = React.useState<{
     empleado: EmpleadoRow;
     nuevoEstatus: 'A' | 'I';
@@ -383,29 +564,49 @@ export default function EmpleadosPage() {
     setEditing(null);
     setStagedPhoto(null);
     setCodeCheckState({ status: 'idle' });
+    setPinCheckState({ status: 'idle' });
+    const randomPin = generateRandom6DigitPin();
     form.reset({
       codigo_empleado: '',
       nombre_completo: '',
+      email: '',
+      telefono_whatsapp: '',
+      pin_codigo: randomPin,
+      biometria_facial_activa: true,
+      webauthn_activo: false,
       credencial: '',
       departamento: '',
       puesto: '',
-      sucursal_id: sucursales[0]?.id ?? null,
+      sucursal_id: sucursales[0]?.id ?? '',
       estatus_empleado: 'A',
     });
     setSheetOpen(true);
   }
 
-  function openEditSheet(row: EmpleadoRow, section: 'datos' | 'foto' = 'datos') {
+  function openEditSheet(
+    row: EmpleadoRow,
+    section: 'datos' | 'foto' | 'biometria' = 'datos',
+  ) {
     setEditing(row);
     setStagedPhoto(null);
     setCodeCheckState({ status: 'available', codigo: row.codigo_empleado });
+    setPinCheckState(
+      row.pin_codigo
+        ? { status: 'available', pin: row.pin_codigo }
+        : { status: 'idle' },
+    );
     form.reset({
       codigo_empleado: row.codigo_empleado,
       nombre_completo: row.nombre_completo,
+      email: row.email ?? '',
+      telefono_whatsapp: row.telefono_whatsapp ?? '',
+      pin_codigo: row.pin_codigo ?? generateRandom6DigitPin(),
+      biometria_facial_activa: row.biometria_facial_activa ?? true,
+      webauthn_activo: row.webauthn_activo ?? false,
       credencial: row.credencial ?? '',
       departamento: row.departamento ?? '',
       puesto: row.puesto ?? '',
-      sucursal_id: row.sucursal_id ?? null,
+      sucursal_id: row.sucursal_id ?? sucursales[0]?.id ?? '',
       estatus_empleado: row.estatus_empleado,
     });
     setSheetOpen(true);
@@ -416,6 +617,151 @@ export default function EmpleadosPage() {
           block: 'start',
         });
       }, 250);
+    } else if (section === 'biometria') {
+      setTimeout(() => {
+        biometriaSectionRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 250);
+    }
+  }
+
+  async function handleSendPinByEmail(empleado: EmpleadoRow) {
+    if (!empleado.email) {
+      toast({
+        title: 'Empleado sin correo electrónico',
+        description:
+          'Abre el expediente del empleado y agrega su cuenta de correo electrónico primero.',
+        variant: 'warning',
+      });
+      openEditSheet(empleado, 'datos');
+      return;
+    }
+
+    setSendingPinEmailId(empleado.id);
+    try {
+      const res = await fetch(`/api/empleados/${empleado.id}/enviar-pin`, {
+        method: 'POST',
+      });
+      const json = (await res.json()) as {
+        ok?: boolean;
+        email?: string;
+        error?: string;
+        delivery?: { delivered: boolean; simulated: boolean };
+      };
+
+      if (!res.ok) {
+        toast({
+          title: 'No se pudo enviar el PIN por correo',
+          description: json.error ?? 'Verifica la configuración SMTP.',
+          variant: 'danger',
+        });
+        return;
+      }
+
+      toast({
+        title: 'PIN enviado al correo del empleado',
+        description: `Se envió el PIN de 6 dígitos y enlace del Checador a ${empleado.email}.`,
+        variant: 'success',
+      });
+    } catch {
+      toast({
+        title: 'Error de red',
+        description: 'No fue posible enviar el correo.',
+        variant: 'danger',
+      });
+    } finally {
+      setSendingPinEmailId(null);
+    }
+  }
+
+  async function handleEnrollWebAuthnDevice() {
+    if (!editing) return;
+    if (!isWebAuthnAvailable()) {
+      toast({
+        title: 'WebAuthn no disponible en este navegador',
+        description:
+          'Abre la aplicación en un dispositivo con lector de huella, FaceID, TouchID o Windows Hello.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    setEnrollingWebAuthn(true);
+    try {
+      const cred = await createEmployeeWebAuthnCredential({
+        empleadoId: editing.id,
+        codigoEmpleado: editing.codigo_empleado,
+        nombreEmpleado: editing.nombre_completo,
+      });
+
+      const res = await fetch(`/api/empleados/${editing.id}/webauthn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...cred,
+          nombre_dispositivo:
+            deviceNickname.trim() || 'Dispositivo Biométrico',
+        }),
+      });
+
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({
+          title: 'Error al guardar llave WebAuthn',
+          description:
+            json.error ?? 'No se pudo registrar la credencial biométrica.',
+          variant: 'danger',
+        });
+        return;
+      }
+
+      form.setValue('webauthn_activo', true);
+      await refetchWebAuthn();
+      await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
+      toast({
+        title: 'Huella / FaceID (WebAuthn) vinculado',
+        description: `${editing.nombre_completo} ya puede hacer Check-In y Check-Out con este dispositivo biométrico.`,
+        variant: 'success',
+      });
+    } catch (err) {
+      toast({
+        title: 'Registro biométrico cancelado',
+        description:
+          err instanceof Error
+            ? err.message
+            : 'No se completó la captura biométrica.',
+        variant: 'warning',
+      });
+    } finally {
+      setEnrollingWebAuthn(false);
+    }
+  }
+
+  async function handleRevokeWebAuthn(credId: string) {
+    if (!editing) return;
+    setRevokingCredId(credId);
+    try {
+      const res = await fetch(
+        `/api/empleados/${editing.id}/webauthn?credencialId=${encodeURIComponent(credId)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        toast({
+          title: 'Error al revocar llave biométrica',
+          variant: 'danger',
+        });
+        return;
+      }
+      await refetchWebAuthn();
+      await queryClient.invalidateQueries({ queryKey: ['empleados-list'] });
+      toast({
+        title: 'Llave biométrica eliminada',
+        variant: 'success',
+      });
+    } finally {
+      setRevokingCredId(null);
     }
   }
 
@@ -426,7 +772,7 @@ export default function EmpleadosPage() {
       title: 'Verifica los datos del empleado',
       description:
         firstErr?.message ??
-        'Revisa los campos obligatorios o con formato incorrecto en el formulario.',
+        'Revisa los campos obligatorios (Sucursal, PIN único de 6 dígitos, Código y Nombre).',
       variant: 'danger',
     });
   }
@@ -437,17 +783,31 @@ export default function EmpleadosPage() {
         title: 'Código de empleado no disponible',
         description:
           form.formState.errors.codigo_empleado?.message ??
-          'El código de empleado ya está en uso. Ingresa un código disponible.',
+          'El código de empleado ya está en uso.',
         variant: 'danger',
       });
       return;
     }
 
-    if (codeCheckState.status === 'checking') {
+    if (pinCheckState.status === 'unavailable') {
       toast({
-        title: 'Verificando código',
+        title: 'PIN de 6 dígitos repetido',
         description:
-          'Espera un momento mientras se verifica la disponibilidad del código.',
+          form.formState.errors.pin_codigo?.message ??
+          'El PIN ya está asignado a otro empleado. Genera o escribe uno único.',
+        variant: 'danger',
+      });
+      return;
+    }
+
+    if (
+      codeCheckState.status === 'checking' ||
+      pinCheckState.status === 'checking'
+    ) {
+      toast({
+        title: 'Verificando disponibilidad',
+        description:
+          'Espera un momento mientras se verifica que el código y el PIN sean únicos.',
         variant: 'default',
       });
       return;
@@ -457,10 +817,15 @@ export default function EmpleadosPage() {
       ...(editing ? { id: editing.id } : {}),
       codigo_empleado: values.codigo_empleado,
       nombre_completo: values.nombre_completo,
+      email: values.email || null,
+      telefono_whatsapp: values.telefono_whatsapp || null,
+      pin_codigo: values.pin_codigo,
+      biometria_facial_activa: values.biometria_facial_activa,
+      webauthn_activo: values.webauthn_activo,
       credencial: values.credencial || null,
       departamento: values.departamento || null,
       puesto: values.puesto || null,
-      sucursal_id: values.sucursal_id || null,
+      sucursal_id: values.sucursal_id,
       estatus_empleado: values.estatus_empleado,
     };
 
@@ -493,16 +858,27 @@ export default function EmpleadosPage() {
       };
       if (!res.ok || !json.data) {
         if (res.status === 409) {
-          form.setError('codigo_empleado', {
-            type: 'manual',
-            message:
-              json.error ??
-              'El código de empleado ya está en uso. Elige un código disponible.',
-          });
-          setCodeCheckState({
-            status: 'unavailable',
-            codigo: values.codigo_empleado,
-          });
+          if (json.error?.toLowerCase().includes('pin')) {
+            form.setError('pin_codigo', {
+              type: 'manual',
+              message: json.error,
+            });
+            setPinCheckState({
+              status: 'unavailable',
+              pin: values.pin_codigo ?? '',
+            });
+          } else {
+            form.setError('codigo_empleado', {
+              type: 'manual',
+              message:
+                json.error ??
+                'El código de empleado ya está en uso. Elige un código disponible.',
+            });
+            setCodeCheckState({
+              status: 'unavailable',
+              codigo: values.codigo_empleado,
+            });
+          }
         }
         toast({
           title: 'Error al guardar empleado',
@@ -548,7 +924,7 @@ export default function EmpleadosPage() {
           title: editing
             ? 'Empleado y fotografía actualizados'
             : 'Empleado y fotografía registrados',
-          description: 'La foto se guardó optimizada a ≤ 720 px.',
+          description: 'La foto y el PIN de 6 dígitos quedaron guardados.',
           variant: 'success',
         });
         return;
@@ -559,7 +935,7 @@ export default function EmpleadosPage() {
         title: editing ? 'Empleado actualizado' : 'Empleado registrado',
         description: editing
           ? 'Los cambios quedaron guardados.'
-          : `${json.data.nombre_completo} fue registrado correctamente.`,
+          : `${json.data.nombre_completo} fue registrado con su PIN único de 6 dígitos.`,
         variant: 'success',
       });
 
@@ -614,36 +990,67 @@ export default function EmpleadosPage() {
       {
         id: 'nombre_completo',
         accessorKey: 'nombre_completo',
-        header: 'Nombre del Trabajador',
+        header: 'Nombre y Correo',
         cell: ({ row }) => (
           <div className="flex flex-col">
             <span className="font-semibold text-[var(--text)]">
               {row.original.nombre_completo}
             </span>
             <span className="text-xs text-[var(--text-2)]">
-              {row.original.puesto ?? 'Sin puesto asignado'}
+              {row.original.email ?? row.original.puesto ?? 'Sin correo registrado'}
             </span>
           </div>
         ),
       },
       {
-        id: 'departamento',
-        accessorKey: 'departamento',
-        header: 'Departamento',
-        cell: ({ row }) => (
-          <span className="text-sm text-[var(--text-2)]">
-            {row.original.departamento ?? 'General'}
-          </span>
-        ),
+        id: 'pin_biometria',
+        header: 'PIN (6 dígitos) y Biometría',
+        accessorFn: (r: EmpleadoRow) => r.pin_codigo ?? '—',
+        cell: ({ row }) => {
+          const item = row.original;
+          const hasPhoto = Boolean(item.foto_path);
+          const hasWebAuthn =
+            item.webauthn_activo ||
+            (item.webauthn_credenciales_count ?? 0) > 0;
+          return (
+            <div className="flex flex-wrap items-center gap-[var(--s-1)]">
+              {item.pin_codigo ? (
+                <code className="inline-flex items-center gap-1 rounded-[var(--r-sm)] bg-[var(--accent-soft)] px-[var(--s-2)] py-0.5 font-mono text-xs font-bold tracking-wider text-[var(--accent)]">
+                  <KeyRound className="size-3" aria-hidden="true" />
+                  {item.pin_codigo}
+                </code>
+              ) : (
+                <Badge variant="warning">Sin PIN</Badge>
+              )}
+              {hasPhoto && item.biometria_facial_activa && (
+                <Badge variant="info">
+                  <ScanFace className="mr-1 size-3" aria-hidden="true" />
+                  Facial
+                </Badge>
+              )}
+              {hasWebAuthn && (
+                <Badge variant="success">
+                  <Fingerprint className="mr-1 size-3" aria-hidden="true" />
+                  WebAuthn
+                </Badge>
+              )}
+            </div>
+          );
+        },
       },
       {
         id: 'sucursal',
-        header: 'Planta / Sucursal',
+        header: 'Sucursal Asignada',
         accessorFn: (r: EmpleadoRow) => r.sucursales?.nombre ?? '—',
         cell: ({ row }) => (
-          <span className="text-xs font-medium text-[var(--text-2)]">
-            {row.original.sucursales?.nombre ?? '—'}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold text-[var(--text)]">
+              {row.original.sucursales?.nombre ?? 'Sin asignar'}
+            </span>
+            <span className="text-xs text-[var(--text-2)]">
+              {row.original.departamento ?? 'General'}
+            </span>
+          </div>
         ),
       },
       {
@@ -674,13 +1081,28 @@ export default function EmpleadosPage() {
                 actions={[
                   {
                     id: 'editar-datos',
-                    label: 'Editar datos',
+                    label: 'Editar datos y PIN',
                     icon: Pencil,
                     onClick: () => openEditSheet(item, 'datos'),
                   },
                   {
+                    id: 'enviar-pin',
+                    label:
+                      sendingPinEmailId === item.id
+                        ? 'Enviando PIN…'
+                        : 'Enviar PIN por correo',
+                    icon: Send,
+                    onClick: () => void handleSendPinByEmail(item),
+                  },
+                  {
+                    id: 'configurar-biometria',
+                    label: 'Configurar WebAuthn / Biometría',
+                    icon: Fingerprint,
+                    onClick: () => openEditSheet(item, 'biometria'),
+                  },
+                  {
                     id: 'editar-foto',
-                    label: 'Cambiar fotografía',
+                    label: 'Cambiar fotografía facial',
                     icon: Camera,
                     onClick: () => openEditSheet(item, 'foto'),
                   },
@@ -714,13 +1136,24 @@ export default function EmpleadosPage() {
         },
       },
     ],
-    [],
+    [sendingPinEmailId],
   );
 
   const exportColumns = React.useMemo<ExportColumn<EmpleadoRow>[]>(
     () => [
       { header: 'Código', accessor: (r: EmpleadoRow) => r.codigo_empleado },
       { header: 'Nombre Completo', accessor: (r: EmpleadoRow) => r.nombre_completo },
+      { header: 'Correo Electrónico', accessor: (r: EmpleadoRow) => r.email ?? '' },
+      { header: 'PIN (6 dígitos)', accessor: (r: EmpleadoRow) => r.pin_codigo ?? '' },
+      {
+        header: 'Biometría Facial',
+        accessor: (r: EmpleadoRow) =>
+          r.foto_path && r.biometria_facial_activa ? 'ACTIVA' : 'INACTIVA',
+      },
+      {
+        header: 'WebAuthn',
+        accessor: (r: EmpleadoRow) => (r.webauthn_activo ? 'ACTIVO' : 'NO'),
+      },
       { header: 'Credencial', accessor: (r: EmpleadoRow) => r.credencial ?? '' },
       { header: 'Departamento', accessor: (r: EmpleadoRow) => r.departamento ?? '' },
       { header: 'Puesto', accessor: (r: EmpleadoRow) => r.puesto ?? '' },
@@ -739,15 +1172,26 @@ export default function EmpleadosPage() {
 
   return (
     <AppShell
-      title="Padrón de Empleados y Fotografía"
-      subtitle="Sincronizado con CONTPAQi Nóminas / TRESS · Fotografía privada con URLs firmadas"
+      title="Padrón de Empleados, Biometría y PIN"
+      subtitle="Fotografía facial (≤ 720 px), llaves biométricas WebAuthn (Passkeys) y PIN único de 6 dígitos"
       mode="client"
       realtimeState={realtimeState}
       actions={
-        <Button onClick={openNewSheet}>
-          <Plus className="size-4" aria-hidden="true" />
-          Nuevo empleado
-        </Button>
+        <div className="flex flex-wrap items-center gap-[var(--s-2)]">
+          <Link
+            href="/checador"
+            target="_blank"
+            className="inline-flex h-10 items-center gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--surface)] px-[var(--s-3)] text-sm font-medium text-[var(--text)] shadow-[var(--shadow-1)] transition-colors hover:bg-[var(--surface-2)]"
+          >
+            <Fingerprint className="size-4 text-[var(--accent)]" aria-hidden="true" />
+            <span>Abrir Kiosco Checador</span>
+            <ExternalLink className="size-3.5 text-[var(--text-3)]" aria-hidden="true" />
+          </Link>
+          <Button onClick={openNewSheet}>
+            <Plus className="size-4" aria-hidden="true" />
+            Nuevo empleado
+          </Button>
+        </div>
       }
     >
       <DataTable
@@ -764,7 +1208,7 @@ export default function EmpleadosPage() {
           setSearch(val);
           setPage(1);
         }}
-        searchPlaceholder="Buscar por número de empleado, nombre o departamento…"
+        searchPlaceholder="Buscar por número de empleado, nombre, correo o departamento…"
         sortBy={sortBy}
         sortDir={sortDir}
         onSortChange={(colId, dir) => {
@@ -808,7 +1252,7 @@ export default function EmpleadosPage() {
         exportFilename="empleados-sm-clock"
         exportColumns={exportColumns}
         emptyTitle="Sin empleados registrados"
-        emptyDescription="Registra empleados manualmente o sincronízalos desde CONTPAQi Nóminas / TRESS."
+        emptyDescription="Registra empleados asignándoles su sucursal, PIN único de 6 dígitos, foto y biometría."
         emptyAction={
           <Button onClick={openNewSheet}>
             <Users className="size-4" aria-hidden="true" />
@@ -825,7 +1269,7 @@ export default function EmpleadosPage() {
             ? `Empleado #${editing.codigo_empleado} · ${editing.nombre_completo}`
             : 'Nuevo empleado'
         }
-        description="Datos generales para reloj checador y fotografía privada (≤ 720 px)."
+        description="Asigna sucursal obligatoria, PIN único de 6 dígitos, correo electrónico, fotografía facial y WebAuthn."
         footer={
           <>
             <Button
@@ -835,13 +1279,28 @@ export default function EmpleadosPage() {
             >
               Cerrar
             </Button>
+            {editing && editing.email && editing.pin_codigo && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={sendingPinEmailId === editing.id}
+                onClick={() => void handleSendPinByEmail(editing)}
+              >
+                <Mail className="size-4" aria-hidden="true" />
+                {sendingPinEmailId === editing.id
+                  ? 'Enviando PIN…'
+                  : 'Enviar PIN por Email'}
+              </Button>
+            )}
             <Button
               type="submit"
               form="empleado-sheet-form"
               disabled={
                 submitting ||
                 codeCheckState.status === 'checking' ||
-                codeCheckState.status === 'unavailable'
+                codeCheckState.status === 'unavailable' ||
+                pinCheckState.status === 'checking' ||
+                pinCheckState.status === 'unavailable'
               }
               onClick={() => {
                 void form.handleSubmit(handleSave, handleFormInvalid)();
@@ -849,8 +1308,9 @@ export default function EmpleadosPage() {
             >
               {submitting
                 ? 'Guardando…'
-                : codeCheckState.status === 'checking'
-                  ? 'Verificando código…'
+                : codeCheckState.status === 'checking' ||
+                    pinCheckState.status === 'checking'
+                  ? 'Verificando…'
                   : editing
                     ? 'Guardar datos'
                     : 'Crear empleado'}
@@ -874,10 +1334,7 @@ export default function EmpleadosPage() {
                     <FormItem>
                       <FormLabel>Código de empleado (Reloj / Nómina)</FormLabel>
                       <FormControl>
-                        <Input
-                          placeholder="1001"
-                          {...field}
-                        />
+                        <Input placeholder="1001" {...field} />
                       </FormControl>
                       {codeCheckState.status === 'checking' && field.value ? (
                         <p
@@ -916,17 +1373,62 @@ export default function EmpleadosPage() {
 
                 <FormField
                   control={form.control}
-                  name="credencial"
+                  name="pin_codigo"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Número de tarjeta / credencial</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>PIN Único (6 dígitos numéricos)</FormLabel>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextPin = generateRandom6DigitPin();
+                            form.setValue('pin_codigo', nextPin, {
+                              shouldDirty: true,
+                              shouldValidate: true,
+                            });
+                          }}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline"
+                        >
+                          <Dices className="size-3.5" aria-hidden="true" />
+                          Generar PIN
+                        </button>
+                      </div>
                       <FormControl>
                         <Input
-                          placeholder="CRD-1001"
+                          placeholder="482910"
+                          inputMode="numeric"
+                          maxLength={6}
+                          className="font-mono tracking-widest"
                           {...field}
                           value={field.value ?? ''}
+                          onChange={(e) => {
+                            const digitsOnly = e.target.value
+                              .replace(/\D/g, '')
+                              .slice(0, 6);
+                            field.onChange(digitsOnly);
+                          }}
                         />
                       </FormControl>
+                      {pinCheckState.status === 'checking' && field.value ? (
+                        <p
+                          className="flex items-center gap-[var(--s-1)] text-xs text-[var(--text-2)] animate-pulse"
+                          role="status"
+                        >
+                          <Loader2 className="size-3.5 animate-spin text-[var(--accent)]" />
+                          <span>Verificando que el PIN no se repita…</span>
+                        </p>
+                      ) : null}
+                      {pinCheckState.status === 'available' &&
+                      field.value &&
+                      !form.formState.errors.pin_codigo ? (
+                        <p
+                          className="flex items-center gap-[var(--s-1)] text-xs font-medium text-[var(--success)]"
+                          role="status"
+                        >
+                          <CheckCircle2 className="size-3.5" />
+                          <span>PIN único y disponible</span>
+                        </p>
+                      ) : null}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -951,6 +1453,94 @@ export default function EmpleadosPage() {
               />
 
               <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo electrónico (Avisos RH / PIN)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="ahernandez@empresa.mx"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="telefono_whatsapp"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono WhatsApp (Avisos RH)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="tel"
+                          placeholder="+526641234567"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="sucursal_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Planta / Sucursal (Obligatoria)</FormLabel>
+                      <FormControl>
+                        <select
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          aria-invalid={Boolean(
+                            form.formState.errors.sucursal_id,
+                          )}
+                          className="ios-input w-full px-[var(--s-3)] text-sm"
+                        >
+                          <option value="">Selecciona una sucursal…</option>
+                          {sucursales.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.clave} — {s.nombre}
+                            </option>
+                          ))}
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="credencial"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número de tarjeta / credencial</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="CRD-1001"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-3">
                 <FormField
                   control={form.control}
                   name="departamento"
@@ -986,35 +1576,6 @@ export default function EmpleadosPage() {
                     </FormItem>
                   )}
                 />
-              </div>
-
-              <div className="grid grid-cols-1 gap-[var(--s-3)] sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="sucursal_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Planta / Sucursal</FormLabel>
-                      <FormControl>
-                        <select
-                          value={field.value ?? ''}
-                          onChange={(e) =>
-                            field.onChange(e.target.value || null)
-                          }
-                          className="ios-input w-full px-[var(--s-3)] text-sm"
-                        >
-                          <option value="">Sin sucursal asignada</option>
-                          {sucursales.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.clave} — {s.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}
@@ -1040,6 +1601,137 @@ export default function EmpleadosPage() {
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* Sección de Biometría Facial y WebAuthn */}
+              <div
+                ref={biometriaSectionRef}
+                className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--surface-2)] p-[var(--s-4)]"
+              >
+                <div className="mb-[var(--s-3)] flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[var(--text)]">
+                      Métodos Biométricos y WebAuthn para Kiosco
+                    </h3>
+                    <p className="text-xs text-[var(--text-2)]">
+                      Configura el reconocimiento facial (con su fotografía actual) y llaves Passkey/WebAuthn para Check-In y Check-Out.
+                    </p>
+                  </div>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="biometria_facial_activa"
+                  render={({ field }) => (
+                    <FormItem className="mb-[var(--s-3)] flex flex-row items-center justify-between rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--surface)] p-[var(--s-3)]">
+                      <div className="flex items-center gap-[var(--s-2)]">
+                        <ScanFace
+                          className="size-5 text-[var(--accent)]"
+                          aria-hidden="true"
+                        />
+                        <div>
+                          <FormLabel className="text-sm font-semibold">
+                            Reconocimiento Facial con Fotografía Registrada
+                          </FormLabel>
+                          <p className="text-xs text-[var(--text-2)]">
+                            Permite al empleado hacer Check-In / Check-Out comparando su rostro en cámara contra su fotografía guardada.
+                          </p>
+                        </div>
+                      </div>
+                      <FormControl>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(field.value)}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                          className="size-4 accent-[var(--accent)]"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {editing ? (
+                  <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--surface)] p-[var(--s-3)]">
+                    <div className="mb-[var(--s-2)] flex flex-wrap items-center justify-between gap-[var(--s-2)]">
+                      <div className="flex items-center gap-[var(--s-2)]">
+                        <Fingerprint
+                          className="size-5 text-[var(--accent)]"
+                          aria-hidden="true"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--text)]">
+                            Llaves Biométricas WebAuthn (Huella / FaceID / TouchID)
+                          </p>
+                          <p className="text-xs text-[var(--text-2)]">
+                            El empleado también puede enrolar su propio teléfono desde el Kiosco usando su PIN de 6 dígitos.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mb-[var(--s-3)] flex flex-wrap items-center gap-[var(--s-2)]">
+                      <Input
+                        value={deviceNickname}
+                        onChange={(e) => setDeviceNickname(e.target.value)}
+                        placeholder="Nombre del dispositivo (ej. Tablet Caseta / iPhone)"
+                        className="max-w-xs text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={enrollingWebAuthn}
+                        onClick={() => void handleEnrollWebAuthnDevice()}
+                      >
+                        <Fingerprint className="size-3.5" aria-hidden="true" />
+                        {enrollingWebAuthn
+                          ? 'Esperando lector biométrico…'
+                          : 'Registrar Huella / FaceID en este dispositivo'}
+                      </Button>
+                    </div>
+
+                    {webauthnCredentials.length > 0 ? (
+                      <ul className="divide-y divide-[var(--border)] rounded-[var(--r-sm)] border border-[var(--border)]">
+                        {webauthnCredentials.map((cred) => (
+                          <li
+                            key={cred.id}
+                            className="flex items-center justify-between px-[var(--s-3)] py-[var(--s-2)] text-xs"
+                          >
+                            <div>
+                              <span className="font-semibold text-[var(--text)]">
+                                {cred.nombre_dispositivo}
+                              </span>
+                              <span className="ml-2 font-mono text-[var(--text-3)]">
+                                ID: {cred.credential_id.slice(0, 12)}…
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={revokingCredId === cred.id}
+                              onClick={() => void handleRevokeWebAuthn(cred.id)}
+                            >
+                              <Trash2
+                                className="size-3.5 text-[var(--danger)]"
+                                aria-hidden="true"
+                              />
+                              Eliminar
+                            </Button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-[var(--text-3)]">
+                        Aún no hay dispositivos WebAuthn vinculados para este empleado.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--text-2)]">
+                    Guarda primero el empleado para registrar llaves biométricas WebAuthn (o comparte su PIN de 6 dígitos para que registre su dispositivo en el primer Check-In).
+                  </p>
+                )}
               </div>
             </form>
           </Form>
@@ -1139,7 +1831,7 @@ export default function EmpleadosPage() {
                 <span className="font-semibold text-[var(--danger)]">
                   Baja / Inactivo (I)
                 </span>{' '}
-                y no se procesarán sus registros de checadas como activo.
+                y no podrá registrar Check-In ni Check-Out.
               </>
             ) : (
               <>

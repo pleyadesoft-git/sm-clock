@@ -3,6 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,9 +14,10 @@ import {
   UserCheck,
 } from 'lucide-react';
 import {
-  AcceptInvitationPasswordRequestSchema,
+  AcceptInvitationPasswordFormSchema,
   roleRequiresMfa,
   UserRoleSchema,
+  type AcceptInvitationPasswordFormValues,
 } from '@sm-clock/contracts';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -27,6 +30,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
 interface InvitationVerificationData {
@@ -39,11 +50,10 @@ interface InvitationVerificationData {
 }
 
 /**
- * Página de Pre-registro por invitación (`/invitacion/[token]`) siguiendo `autofill-sign-up-form`:
- * - Un solo campo `name` con `autocomplete="name"`.
- * - Correo con `type="email"`, `autocomplete="username"`, `spellCheck={false}`.
- * - Contraseña nueva con `type="password"`, `autocomplete="new-password"`, botón Mostrar/Ocultar.
- * - Opción de ingreso federado con Google Auth vinculado al token de invitación.
+ * Página de Pre-registro por invitación (`/invitacion/[token]`):
+ * - Permite activar la cuenta con correo y contraseña (con confirmación y ver/ocultar)
+ *   para usuarios sin cuenta de Gmail, tanto para la app del tenant como para agentes.
+ * - Opción alternativa de ingreso federado con Google Auth vinculado al token de invitación.
  */
 export default function InvitacionPreRegistroPage() {
   const params = useParams<{ token: string }>();
@@ -55,12 +65,21 @@ export default function InvitacionPreRegistroPage() {
   const [loadingInvite, setLoadingInvite] = React.useState(true);
   const [verifyError, setVerifyError] = React.useState<string | null>(null);
 
-  const [nombreCompleto, setNombreCompleto] = React.useState('');
-  const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
+
+  const form = useForm<AcceptInvitationPasswordFormValues>({
+    resolver: zodResolver(AcceptInvitationPasswordFormSchema),
+    defaultValues: {
+      nombre_completo: '',
+      password: '',
+      confirm_password: '',
+    },
+    mode: 'onTouched',
+  });
 
   React.useEffect(() => {
     if (!token) {
@@ -84,7 +103,11 @@ export default function InvitacionPreRegistroPage() {
           );
         } else {
           setInviteInfo(body.data);
-          setNombreCompleto(body.data.nombre_completo);
+          form.reset({
+            nombre_completo: body.data.nombre_completo,
+            password: '',
+            confirm_password: '',
+          });
         }
       })
       .catch(() => {
@@ -101,33 +124,22 @@ export default function InvitacionPreRegistroPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, form]);
 
   const handleSubmitPassword = async (
-    event: React.FormEvent<HTMLFormElement>,
+    values: AcceptInvitationPasswordFormValues,
   ) => {
-    event.preventDefault();
     setFormError(null);
-
-    const parsed = AcceptInvitationPasswordRequestSchema.safeParse({
-      token,
-      nombre_completo: nombreCompleto,
-      password,
-    });
-
-    if (!parsed.success) {
-      setFormError(
-        parsed.error.issues[0]?.message ?? 'Verifica los datos ingresados',
-      );
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       const res = await fetch('/api/invitaciones/aceptar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify({
+          token,
+          nombre_completo: values.nombre_completo,
+          password: values.password,
+        }),
       });
 
       const body = (await res.json()) as {
@@ -145,7 +157,7 @@ export default function InvitacionPreRegistroPage() {
       const supabase = createSupabaseBrowserClient();
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: body.data.email,
-        password: parsed.data.password,
+        password: values.password,
       });
 
       if (signInError) {
@@ -265,118 +277,184 @@ export default function InvitacionPreRegistroPage() {
                   </Badge>
                 </div>
 
-                <form
-                  noValidate
-                  onSubmit={handleSubmitPassword}
-                  className="flex flex-col gap-[var(--s-4)]"
-                >
-                  <div className="flex flex-col gap-[var(--s-1)]">
-                    <label htmlFor="invite-email" className="ios-label">
-                      Correo electrónico invitado
-                    </label>
-                    <Input
-                      id="invite-email"
-                      name="email"
-                      type="email"
-                      autoComplete="username"
-                      spellCheck={false}
-                      readOnly
-                      value={inviteInfo.email}
-                      className="opacity-80"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[var(--s-1)]">
-                    <label htmlFor="full-name" className="ios-label">
-                      Nombre completo
-                    </label>
-                    <Input
-                      id="full-name"
-                      name="full-name"
-                      type="text"
-                      autoComplete="name"
-                      enterKeyHint="next"
-                      value={nombreCompleto}
-                      onChange={(e) => setNombreCompleto(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-[var(--s-1)]">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="new-password" className="ios-label">
-                        Crear contraseña
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        aria-pressed={showPassword}
-                        className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
-                        aria-label={
-                          showPassword
-                            ? 'Ocultar contraseña'
-                            : 'Mostrar contraseña'
-                        }
-                      >
-                        {showPassword ? (
-                          <>
-                            <EyeOff className="size-3.5" aria-hidden="true" />
-                            <span>Ocultar</span>
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="size-3.5" aria-hidden="true" />
-                            <span>Mostrar</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <Input
-                      id="new-password"
-                      name="new-password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="new-password"
-                      enterKeyHint="done"
-                      aria-describedby="invite-password-constraints"
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (formError) setFormError(null);
-                      }}
-                    />
-                    <span
-                      id="invite-password-constraints"
-                      className="text-xs font-medium text-[var(--text-2)]"
-                    >
-                      Mínimo 8 caracteres.
-                    </span>
-                  </div>
-
-                  {formError ? (
-                    <div
-                      role="alert"
-                      className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
-                    >
-                      {formError}
-                    </div>
-                  ) : null}
-
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full"
+                <Form {...form}>
+                  <form
+                    noValidate
+                    onSubmit={form.handleSubmit(handleSubmitPassword)}
+                    className="flex flex-col gap-[var(--s-4)]"
                   >
-                    <CheckCircle2
-                      className="size-4"
-                      strokeWidth={1.75}
-                      aria-hidden="true"
+                    <div className="flex flex-col gap-[var(--s-1)]">
+                      <label htmlFor="invite-email" className="ios-label">
+                        Correo electrónico invitado
+                      </label>
+                      <Input
+                        id="invite-email"
+                        name="email"
+                        type="email"
+                        autoComplete="username"
+                        spellCheck={false}
+                        readOnly
+                        value={inviteInfo.email}
+                        className="opacity-80"
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="nombre_completo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nombre completo</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="text"
+                              autoComplete="name"
+                              enterKeyHint="next"
+                              {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (formError) setFormError(null);
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                    <span>
-                      {isSubmitting
-                        ? 'Activando cuenta…'
-                        : 'Crear cuenta e iniciar sesión'}
+
+                    <FormField
+                      control={form.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between">
+                            <FormLabel>Crear contraseña</FormLabel>
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword((prev) => !prev)}
+                              aria-pressed={showPassword}
+                              className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                              aria-label={
+                                showPassword
+                                  ? 'Ocultar contraseña'
+                                  : 'Mostrar contraseña'
+                              }
+                            >
+                              {showPassword ? (
+                                <>
+                                  <EyeOff className="size-3.5" aria-hidden="true" />
+                                  <span>Ocultar</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="size-3.5" aria-hidden="true" />
+                                  <span>Mostrar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <FormControl>
+                            <Input
+                              type={showPassword ? 'text' : 'password'}
+                              autoComplete="new-password"
+                              enterKeyHint="next"
+                              placeholder="Mínimo 8 caracteres"
+                              {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (formError) setFormError(null);
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="confirm_password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between">
+                            <FormLabel>Confirmar contraseña</FormLabel>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowConfirmPassword((prev) => !prev)
+                              }
+                              aria-pressed={showConfirmPassword}
+                              className="inline-flex items-center gap-[var(--s-1)] text-xs font-semibold text-[var(--accent)] cursor-pointer"
+                              aria-label={
+                                showConfirmPassword
+                                  ? 'Ocultar confirmación de contraseña'
+                                  : 'Mostrar confirmación de contraseña'
+                              }
+                            >
+                              {showConfirmPassword ? (
+                                <>
+                                  <EyeOff className="size-3.5" aria-hidden="true" />
+                                  <span>Ocultar</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="size-3.5" aria-hidden="true" />
+                                  <span>Mostrar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <FormControl>
+                            <Input
+                              type={showConfirmPassword ? 'text' : 'password'}
+                              autoComplete="new-password"
+                              enterKeyHint="done"
+                              placeholder="Repite tu contraseña"
+                              {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                if (formError) setFormError(null);
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <span className="text-xs font-medium text-[var(--text-2)]">
+                      {inviteInfo.rol === 'ADMIN_EMPRESA'
+                        ? 'Esta contraseña te servirá para ingresar a la aplicación web y a los Agentes SM Clock sin requerir Gmail.'
+                        : 'Esta contraseña te servirá para ingresar a la aplicación web sin requerir Gmail.'}
                     </span>
-                  </Button>
-                </form>
+
+                    {formError ? (
+                      <div
+                        role="alert"
+                        className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
+                      >
+                        {formError}
+                      </div>
+                    ) : null}
+
+                    <Button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full"
+                    >
+                      <CheckCircle2
+                        className="size-4"
+                        strokeWidth={1.75}
+                        aria-hidden="true"
+                      />
+                      <span>
+                        {isSubmitting
+                          ? 'Activando cuenta…'
+                          : 'Crear cuenta e iniciar sesión'}
+                      </span>
+                    </Button>
+                  </form>
+                </Form>
 
                 <div className="relative flex items-center justify-center py-[var(--s-1)]">
                   <div className="w-full border-t border-[var(--separator)]" />

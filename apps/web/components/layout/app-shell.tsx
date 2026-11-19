@@ -73,6 +73,7 @@ export interface AppShellProps {
   realtimeState?: RealtimeConnectionState;
   mode?: 'admin' | 'client';
   userRole?: UserRole;
+  tenantNombre?: string | null;
   children: React.ReactNode;
 }
 
@@ -81,6 +82,7 @@ interface HeaderUserSummary {
   email: string;
   rol: UserRole | null;
   avatarUrl: string | null;
+  tenantNombre: string | null;
 }
 
 function getInitials(name: string, email: string): string {
@@ -158,20 +160,42 @@ function UserNavMenu({
             transition={{ type: 'spring', stiffness: 450, damping: 32 }}
             className="absolute bottom-full left-0 right-0 z-50 mb-[var(--s-2)] rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--surface)] p-[var(--s-3)] shadow-[var(--shadow-2)]"
           >
-            {roleBadgeLabel ? (
-              <div className="flex items-center gap-[var(--s-3)] border-b border-[var(--separator)] px-[var(--s-3)] pb-[var(--s-2)]">
-                <ShieldCheck
-                  className="size-4 shrink-0 text-[var(--accent)]"
-                  strokeWidth={1.75}
-                  aria-hidden="true"
-                />
-                <Badge
-                  variant={
-                    userSummary.rol === 'OPERADOR' ? 'info' : 'accent'
-                  }
-                >
-                  {roleBadgeLabel}
-                </Badge>
+            {roleBadgeLabel || userSummary.tenantNombre ? (
+              <div className="flex flex-col gap-[var(--s-2)] border-b border-[var(--separator)] px-[var(--s-3)] pb-[var(--s-2)]">
+                {roleBadgeLabel ? (
+                  <div className="flex items-center gap-[var(--s-3)]">
+                    <ShieldCheck
+                      className="size-4 shrink-0 text-[var(--accent)]"
+                      strokeWidth={1.75}
+                      aria-hidden="true"
+                    />
+                    <Badge
+                      variant={
+                        userSummary.rol === 'OPERADOR' ? 'info' : 'accent'
+                      }
+                    >
+                      {roleBadgeLabel}
+                    </Badge>
+                  </div>
+                ) : null}
+                {userSummary.tenantNombre ? (
+                  <div
+                    data-testid="user-nav-tenant-item"
+                    className="flex items-center gap-[var(--s-2)] text-xs text-[var(--text-2)]"
+                  >
+                    <Building2
+                      className="size-3.5 shrink-0 text-[var(--accent)]"
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                    <span
+                      className="truncate font-semibold text-[var(--text)]"
+                      title={userSummary.tenantNombre}
+                    >
+                      {userSummary.tenantNombre}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -284,11 +308,9 @@ function UserNavMenu({
           <span className="truncate text-xs font-bold text-[var(--text)]">
             {userSummary.nombreCompleto}
           </span>
-          {userSummary.email ? (
-            <span className="truncate text-[11px] text-[var(--text-2)]">
-              {userSummary.email}
-            </span>
-          ) : null}
+          <span className="truncate text-[11px] text-[var(--text-2)]">
+            {userSummary.tenantNombre ?? userSummary.email}
+          </span>
         </div>
         <ChevronsUpDown
           className="size-4 shrink-0 text-[var(--text-2)]"
@@ -311,6 +333,7 @@ export function AppShell({
   realtimeState = 'connected',
   mode = 'admin',
   userRole,
+  tenantNombre,
   children,
 }: AppShellProps) {
   const pathname = usePathname() || '/dashboard';
@@ -326,6 +349,7 @@ export function AppShell({
     email: '',
     rol: userRole ?? null,
     avatarUrl: null,
+    tenantNombre: tenantNombre ?? null,
   });
   const [avatarLoadError, setAvatarLoadError] = React.useState(false);
   const [signingOut, setSigningOut] = React.useState(false);
@@ -378,6 +402,7 @@ export function AppShell({
             nombreCompleto?: unknown;
             email?: unknown;
             avatarUrl?: unknown;
+            tenantNombre?: unknown;
           };
         };
         const data = json.data;
@@ -395,16 +420,22 @@ export function AppShell({
         setUserSummary({
           nombreCompleto:
             typeof data?.nombreCompleto === 'string' &&
-            data.nombreCompleto.trim().length > 0
+              data.nombreCompleto.trim().length > 0
               ? data.nombreCompleto.trim()
               : 'Mi Perfil',
           email: typeof data?.email === 'string' ? data.email : '',
           rol,
           avatarUrl:
             typeof data?.avatarUrl === 'string' &&
-            data.avatarUrl.trim().length > 0
+              data.avatarUrl.trim().length > 0
               ? data.avatarUrl.trim()
               : null,
+          tenantNombre:
+            tenantNombre ??
+            (typeof data?.tenantNombre === 'string' &&
+              data.tenantNombre.trim().length > 0
+              ? data.tenantNombre.trim()
+              : null),
         });
         setAvatarLoadError(false);
 
@@ -622,6 +653,7 @@ export function AppShell({
 
   const initials = getInitials(userSummary.nombreCompleto, userSummary.email);
   const showAvatarImage = Boolean(userSummary.avatarUrl) && !avatarLoadError;
+  const currentTenantNombre = tenantNombre ?? userSummary.tenantNombre;
 
   return (
     <div className="flex min-h-dvh bg-[var(--bg)] text-[var(--text)]">
@@ -636,15 +668,15 @@ export function AppShell({
             : 'w-0 p-0 border-r-0 opacity-0 overflow-hidden pointer-events-none',
         )}
       >
-        <div className="flex flex-col gap-[var(--s-6)]">
+        <div className="flex flex-col gap-[var(--s-4)]">
           <div className="flex items-center justify-between gap-[var(--s-2)] px-[var(--s-2)]">
-            <div className="flex items-center gap-[var(--s-3)]">
-              <SmClockLogo size={40} className="shadow-[var(--shadow-1)] rounded-[10px]" />
-              <div className="flex flex-col">
-                <span className="text-base font-bold tracking-tight text-[var(--text)]">
+            <div className="flex items-center gap-[var(--s-3)] min-w-0">
+              <SmClockLogo size={40} className="shrink-0 shadow-[var(--shadow-1)] rounded-[10px]" />
+              <div className="flex flex-col min-w-0">
+                <span className="text-base font-bold tracking-tight text-[var(--text)] truncate">
                   SM Clock
                 </span>
-                <span className="text-xs font-medium text-[var(--text-2)]">
+                <span className="text-xs font-medium text-[var(--text-2)] truncate">
                   {resolvedRole === 'OPERADOR'
                     ? 'Portal de Operador'
                     : mode === 'client'
@@ -658,11 +690,33 @@ export function AppShell({
               onClick={toggleDesktopSidebar}
               aria-label="Colapsar barra lateral"
               title="Colapsar barra lateral"
-              className="flex size-8 min-h-[32px] min-w-[32px] items-center justify-center rounded-[var(--r-sm)] text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
+              className="flex size-8 min-h-[32px] min-w-[32px] shrink-0 items-center justify-center rounded-[var(--r-sm)] text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
             >
               <PanelLeftClose className="size-4" strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
+
+          {mode === 'client' && currentTenantNombre ? (
+            <div
+              data-testid="sidebar-tenant-badge"
+              className="mx-[var(--s-1)] flex items-center gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)]/80 px-[var(--s-3)] py-[var(--s-2)] text-xs shadow-xs"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-[var(--r-sm)] bg-[var(--surface)] text-[var(--accent)]">
+                <Building2 className="size-4" strokeWidth={2} aria-hidden="true" />
+              </div>
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-2)]">
+                  Empresa
+                </span>
+                <span
+                  className="truncate text-xs font-bold text-[var(--text)]"
+                  title={currentTenantNombre}
+                >
+                  {currentTenantNombre}
+                </span>
+              </div>
+            </div>
+          ) : null}
 
           <nav className="flex flex-col gap-[var(--s-1)]">
             {navItems.map((item) => {
@@ -770,9 +824,22 @@ export function AppShell({
             </button>
 
             <div className="flex flex-col">
-              <h1 className="text-xl font-bold tracking-tight text-[var(--text)] md:text-2xl">
-                {title}
-              </h1>
+              <div className="flex items-center gap-[var(--s-2)] flex-wrap">
+                <h1 className="text-xl font-bold tracking-tight text-[var(--text)] md:text-2xl">
+                  {title}
+                </h1>
+                {mode === 'client' && currentTenantNombre ? (
+                  <span
+                    data-testid="header-tenant-badge"
+                    className="inline-flex items-center gap-[var(--s-1)] rounded-[var(--r-pill)] border border-[var(--separator)] bg-[var(--surface-2)] px-[var(--s-3)] py-[var(--s-1)] text-xs font-semibold text-[var(--text)] shadow-xs"
+                  >
+                    <Building2 className="size-3 text-[var(--accent)] shrink-0" strokeWidth={2} aria-hidden="true" />
+                    <span className="max-w-[200px] truncate sm:max-w-[320px]" title={currentTenantNombre}>
+                      {currentTenantNombre}
+                    </span>
+                  </span>
+                ) : null}
+              </div>
               {subtitle ? (
                 <p className="text-xs font-medium text-[var(--text-2)] md:text-sm">
                   {subtitle}
@@ -915,16 +982,16 @@ export function AppShell({
                 <span className="h-12 w-1.5 rounded-full bg-[var(--separator)] opacity-60" />
               </div>
 
-              <div className="flex flex-col gap-[var(--s-6)]">
+              <div className="flex flex-col gap-[var(--s-4)]">
                 {/* Encabezado con Logo y Botón de Cierre */}
                 <div className="flex items-center justify-between gap-[var(--s-2)] px-[var(--s-1)]">
-                  <div className="flex items-center gap-[var(--s-3)]">
-                    <SmClockLogo size={36} className="shadow-[var(--shadow-1)] rounded-[10px]" />
-                    <div className="flex flex-col">
-                      <span className="text-base font-bold tracking-tight text-[var(--text)]">
+                  <div className="flex items-center gap-[var(--s-3)] min-w-0">
+                    <SmClockLogo size={36} className="shrink-0 shadow-[var(--shadow-1)] rounded-[10px]" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-base font-bold tracking-tight text-[var(--text)] truncate">
                         SM Clock
                       </span>
-                      <span className="text-xs font-medium text-[var(--text-2)]">
+                      <span className="text-xs font-medium text-[var(--text-2)] truncate">
                         {resolvedRole === 'OPERADOR'
                           ? 'Portal de Operador'
                           : mode === 'client'
@@ -937,11 +1004,33 @@ export function AppShell({
                     type="button"
                     onClick={() => setMobileDrawerOpen(false)}
                     aria-label="Cerrar panel de navegación"
-                    className="flex size-10 min-h-[var(--touch-min)] min-w-[var(--touch-min)] items-center justify-center rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] text-[var(--text-2)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
+                    className="flex size-10 min-h-[var(--touch-min)] min-w-[var(--touch-min)] shrink-0 items-center justify-center rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] text-[var(--text-2)] hover:bg-[var(--surface)] hover:text-[var(--text)] transition-colors active:scale-95 cursor-pointer"
                   >
                     <X className="size-5" strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 </div>
+
+                {mode === 'client' && currentTenantNombre ? (
+                  <div
+                    data-testid="mobile-tenant-badge"
+                    className="flex items-center gap-[var(--s-2)] rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)]/80 px-[var(--s-3)] py-[var(--s-2)] text-xs shadow-xs"
+                  >
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-[var(--r-sm)] bg-[var(--surface)] text-[var(--accent)]">
+                      <Building2 className="size-4" strokeWidth={2} aria-hidden="true" />
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-2)]">
+                        Empresa
+                      </span>
+                      <span
+                        className="truncate text-xs font-bold text-[var(--text)]"
+                        title={currentTenantNombre}
+                      >
+                        {currentTenantNombre}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Enlaces de navegación */}
                 <nav className="flex flex-col gap-[var(--s-1)] overflow-y-auto pr-[var(--s-1)]">

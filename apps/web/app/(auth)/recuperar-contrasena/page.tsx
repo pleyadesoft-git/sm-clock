@@ -2,8 +2,13 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { ArrowLeft, KeyRound, MailCheck } from 'lucide-react';
-import { ForgotPasswordRequestSchema } from '@sm-clock/contracts';
+import {
+  ForgotPasswordRequestSchema,
+  type ForgotPasswordRequest,
+} from '@sm-clock/contracts';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,10 +18,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 
 export default function RecuperarContrasenaPage() {
-  const [email, setEmail] = React.useState('');
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(
     null,
@@ -24,26 +36,25 @@ export default function RecuperarContrasenaPage() {
   const [devResetUrl, setDevResetUrl] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const form = useForm<ForgotPasswordRequest>({
+    resolver: zodResolver(ForgotPasswordRequestSchema),
+    defaultValues: {
+      email: '',
+    },
+    mode: 'onTouched',
+  });
+
+  const handleSubmit = async (values: ForgotPasswordRequest) => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setDevResetUrl(null);
-
-    const parsed = ForgotPasswordRequestSchema.safeParse({ email });
-    if (!parsed.success) {
-      setErrorMessage(
-        parsed.error.issues[0]?.message ?? 'Ingresa un correo válido',
-      );
-      return;
-    }
-
     setIsSubmitting(true);
+
     try {
       const res = await fetch('/api/auth/recuperar-contrasena', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: parsed.data.email }),
+        body: JSON.stringify({ email: values.email }),
       });
 
       const body = (await res.json()) as {
@@ -83,78 +94,94 @@ export default function RecuperarContrasenaPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="items-center text-center">
             <div className="mb-[var(--s-2)] flex size-12 items-center justify-center rounded-[var(--r-lg)] bg-[var(--accent)] text-[var(--text-on-accent)] shadow-[var(--shadow-1)]">
-              <KeyRound className="size-6" strokeWidth={1.75} aria-hidden="true" />
+              <KeyRound
+                className="size-6"
+                strokeWidth={1.75}
+                aria-hidden="true"
+              />
             </div>
             <CardTitle>Recuperar contraseña</CardTitle>
             <CardDescription>
-              Ingresa tu correo electrónico y te enviaremos un enlace seguro para restablecer tu contraseña.
+              Ingresa tu correo electrónico y te enviaremos un enlace seguro
+              para restablecer tu contraseña.
             </CardDescription>
           </CardHeader>
 
           <CardContent className="flex flex-col gap-[var(--s-4)]">
-            <form
-              noValidate
-              onSubmit={handleSubmit}
-              className="flex flex-col gap-[var(--s-4)]"
-            >
-              <div className="flex flex-col gap-[var(--s-1)]">
-                <label htmlFor="recovery-email" className="ios-label">
-                  Correo electrónico registrado
-                </label>
-                <Input
-                  id="recovery-email"
+            <Form {...form}>
+              <form
+                noValidate
+                onSubmit={form.handleSubmit(handleSubmit)}
+                className="flex flex-col gap-[var(--s-4)]"
+              >
+                <FormField
+                  control={form.control}
                   name="email"
-                  type="email"
-                  autoComplete="username"
-                  spellCheck={false}
-                  enterKeyHint="done"
-                  placeholder="nombre@empresa.mx"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (errorMessage) setErrorMessage(null);
-                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo electrónico registrado</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          autoComplete="username"
+                          spellCheck={false}
+                          autoFocus
+                          enterKeyHint="done"
+                          placeholder="nombre@empresa.mx"
+                          {...field}
+                          onChange={(e) => {
+                            field.onChange(e);
+                            if (errorMessage) setErrorMessage(null);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
 
-              {errorMessage ? (
-                <div
-                  role="alert"
-                  className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
-                >
-                  {errorMessage}
-                </div>
-              ) : null}
-
-              {successMessage ? (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-md)] bg-[var(--success-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--success)]"
-                >
-                  <div className="flex items-center gap-[var(--s-2)]">
-                    <MailCheck className="size-4 shrink-0" aria-hidden="true" />
-                    <span>{successMessage}</span>
+                {errorMessage ? (
+                  <div
+                    role="alert"
+                    className="rounded-[var(--r-md)] bg-[var(--danger-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--danger)]"
+                  >
+                    {errorMessage}
                   </div>
-                  {devResetUrl ? (
-                    <a
-                      href={devResetUrl}
-                      className="text-xs underline text-[var(--accent)] break-all"
-                    >
-                      Abrir enlace de restablecimiento (modo desarrollo)
-                    </a>
-                  ) : null}
-                </div>
-              ) : null}
+                ) : null}
 
-              <Button type="submit" disabled={isSubmitting} className="w-full">
-                <span>
-                  {isSubmitting
-                    ? 'Enviando instrucciones…'
-                    : 'Enviar enlace de recuperación'}
-                </span>
-              </Button>
-            </form>
+                {successMessage ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex flex-col gap-[var(--s-2)] rounded-[var(--r-md)] bg-[var(--success-bg)] p-[var(--s-3)] text-sm font-semibold text-[var(--success)]"
+                  >
+                    <div className="flex items-center gap-[var(--s-2)]">
+                      <MailCheck
+                        className="size-4 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span>{successMessage}</span>
+                    </div>
+                    {devResetUrl ? (
+                      <a
+                        href={devResetUrl}
+                        className="break-all text-xs text-[var(--accent)] underline"
+                      >
+                        Abrir enlace de restablecimiento (modo desarrollo)
+                      </a>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                <Button type="submit" disabled={isSubmitting} className="w-full">
+                  <span>
+                    {isSubmitting
+                      ? 'Enviando instrucciones…'
+                      : 'Enviar enlace de recuperación'}
+                  </span>
+                </Button>
+              </form>
+            </Form>
 
             <div className="flex justify-center pt-[var(--s-2)]">
               <Link

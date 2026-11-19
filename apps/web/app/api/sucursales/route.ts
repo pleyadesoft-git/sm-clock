@@ -30,6 +30,9 @@ async function resolveTenantIdForUser(auth: {
   return null;
 }
 
+const SUCURSAL_SELECT_COLUMNS =
+  'id, tenant_id, clave, nombre, direccion, latitud, longitud, radio_geocerca_m, activa, created_at, fuentes_asistencia(id, clave, consecutivo_sucursal, nombre_ubicacion, marca, modelo, ip_local, puerto, activo, ultima_conexion_exitosa, ultimo_error)';
+
 export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireAuthenticatedUser();
   if (!auth.ok) {
@@ -78,7 +81,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const admin = createSupabaseAdminClient();
   let query = admin
     .from('sucursales')
-    .select('id, tenant_id, clave, nombre, direccion, activa, created_at', {
+    .select(SUCURSAL_SELECT_COLUMNS, {
       count: 'exact',
     })
     .eq('tenant_id', tenantId)
@@ -138,7 +141,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   const parsed = SucursalCreateSchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Datos de sucursal inválidos', details: parsed.error.issues },
+      {
+        error: parsed.error.issues[0]?.message ?? 'Datos de sucursal inválidos',
+        details: parsed.error.issues,
+      },
       { status: 422 },
     );
   }
@@ -151,9 +157,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       clave: parsed.data.clave.toUpperCase(),
       nombre: parsed.data.nombre,
       direccion: parsed.data.direccion ?? null,
+      latitud: parsed.data.latitud,
+      longitud: parsed.data.longitud,
+      radio_geocerca_m: parsed.data.radio_geocerca_m,
       activa: parsed.data.activa,
     })
-    .select('id, tenant_id, clave, nombre, direccion, activa, created_at')
+    .select(SUCURSAL_SELECT_COLUMNS)
     .single();
 
   if (error || !created) {
@@ -167,7 +176,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     tenantId,
     actorId: auth.user.userId,
     accion: 'CREAR_SUCURSAL',
-    detalle: { sucursal_id: created.id, clave: created.clave },
+    detalle: {
+      sucursal_id: created.id,
+      clave: created.clave,
+      latitud: created.latitud,
+      longitud: created.longitud,
+      radio_geocerca_m: created.radio_geocerca_m,
+    },
   });
 
   await broadcastTenantEvent(tenantId, 'sucursales_changed', {
@@ -210,7 +225,11 @@ export async function PATCH(request: Request): Promise<NextResponse> {
   const parsed = SucursalUpdateSchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Datos de actualización inválidos', details: parsed.error.issues },
+      {
+        error:
+          parsed.error.issues[0]?.message ?? 'Datos de actualización inválidos',
+        details: parsed.error.issues,
+      },
       { status: 422 },
     );
   }
@@ -222,11 +241,14 @@ export async function PATCH(request: Request): Promise<NextResponse> {
       clave: parsed.data.clave ? parsed.data.clave.toUpperCase() : undefined,
       nombre: parsed.data.nombre,
       direccion: parsed.data.direccion,
+      latitud: parsed.data.latitud,
+      longitud: parsed.data.longitud,
+      radio_geocerca_m: parsed.data.radio_geocerca_m,
       activa: parsed.data.activa,
     })
     .eq('id', parsed.data.id)
     .eq('tenant_id', tenantId)
-    .select('id, tenant_id, clave, nombre, direccion, activa, created_at')
+    .select(SUCURSAL_SELECT_COLUMNS)
     .single();
 
   if (error || !updated) {
@@ -240,7 +262,13 @@ export async function PATCH(request: Request): Promise<NextResponse> {
     tenantId,
     actorId: auth.user.userId,
     accion: 'ACTUALIZAR_SUCURSAL',
-    detalle: { sucursal_id: updated.id, clave: updated.clave },
+    detalle: {
+      sucursal_id: updated.id,
+      clave: updated.clave,
+      latitud: updated.latitud,
+      longitud: updated.longitud,
+      radio_geocerca_m: updated.radio_geocerca_m,
+    },
   });
 
   await broadcastTenantEvent(tenantId, 'sucursales_changed', {

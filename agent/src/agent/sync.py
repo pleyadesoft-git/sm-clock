@@ -175,6 +175,31 @@ class CloudSyncClient:
                 drift, alert = check_clock_drift(str(resp_data["servidor_ts_utc"]))
                 self.ultimo_drift_segundos = drift
                 self.alerta_desvio_reloj = alert
+            notificaciones = resp_data.get("notificaciones_disparadas")
+            if isinstance(notificaciones, list):
+                for item in notificaciones:
+                    if isinstance(item, dict):
+                        try:
+                            self.db.record_triggered_notification(
+                                mensaje_id=str(item.get("mensaje_id") or "aviso_rh"),
+                                codigo_empleado=str(item.get("codigo_empleado") or ""),
+                                nombre_empleado=str(item.get("nombre_empleado") or "Empleado"),
+                                tipo_marca=str(item.get("tipo_marca") or "CHECADA"),
+                                titulo=str(item.get("titulo") or "Aviso de RH"),
+                                mensaje=str(item.get("mensaje") or ""),
+                                texto_voz=str(item.get("texto_voz") or item.get("mensaje") or ""),
+                                reproducir_audio=bool(item.get("reproducir_audio", True)),
+                                canal_utilizado=str(item.get("canal_utilizado") or "AGENTE_AUDIO_VISUAL"),
+                                estatus_entrega=str(item.get("estatus_entrega") or "ENTREGADO_DISPOSITIVO"),
+                                whatsapp_web_url=(
+                                    str(item["whatsapp_web_url"])
+                                    if item.get("whatsapp_web_url")
+                                    else None
+                                ),
+                                ts_utc=str(item.get("ts_utc") or ""),
+                            )
+                        except Exception as exc:
+                            logger.warning("No se pudo guardar notificación local disparada: %s", exc)
             return synced_count
         return 0
 

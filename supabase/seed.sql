@@ -73,26 +73,34 @@ insert into public.tenants (
 on conflict (id) do nothing;
 
 -- Sucursales de ejemplo para TIJ-001
-insert into public.sucursales (id, tenant_id, clave, nombre, direccion)
+insert into public.sucursales (id, tenant_id, clave, nombre, direccion, latitud, longitud, radio_geocerca_m)
 values
   (
     '11111111-0001-4000-8000-000000000001',
     '11111111-1111-4111-8111-111111111111',
     'OTAY-1',
     'Planta Industrial Otay',
-    'Blvd. Bellas Artes 1850, Cd. Industrial Otay, Tijuana, B.C.'
+    'Blvd. Bellas Artes 1850, Cd. Industrial Otay, Tijuana, B.C.',
+    32.5435,
+    -116.9355,
+    150
   ),
   (
     '11111111-0001-4000-8000-000000000002',
     '11111111-1111-4111-8111-111111111111',
     'FLORIDO-1',
     'Parque Industrial El Florido',
-    'Blvd. Insurgentes 21000, El Florido, Tijuana, B.C.'
+    'Blvd. Insurgentes 21000, El Florido, Tijuana, B.C.',
+    32.4561,
+    -116.8752,
+    200
   )
 on conflict (id) do nothing;
 
 -- Empleados de ejemplo para TIJ-001
-insert into public.empleados (id, tenant_id, sucursal_id, codigo_empleado, credencial, nombre_completo, departamento, puesto)
+insert into public.empleados (
+  id, tenant_id, sucursal_id, codigo_empleado, credencial, nombre_completo, email, pin_codigo, biometria_facial_activa, webauthn_activo, departamento, puesto
+)
 values
   (
     '11111111-0002-4000-8000-000000000001',
@@ -101,6 +109,10 @@ values
     '1001',
     'CRD-1001',
     'Alejandro Hernández Soto',
+    'ahernandez@mpacifico.mx',
+    '100101',
+    true,
+    false,
     'Producción',
     'Operador CNC'
   ),
@@ -111,6 +123,10 @@ values
     '1002',
     'CRD-1002',
     'Gabriela Valenzuela Ruiz',
+    'gvalenzuela@mpacifico.mx',
+    '100202',
+    true,
+    false,
     'Calidad',
     'Inspectora de Calidad'
   ),
@@ -121,6 +137,10 @@ values
     '1003',
     'CRD-1003',
     'Marco Antonio Estrada Gil',
+    'mestrada@mpacifico.mx',
+    '100303',
+    false,
+    false,
     'Almacén',
     'Montacarguista'
   ),
@@ -131,6 +151,10 @@ values
     '1004',
     'CRD-1004',
     'Diana Patricia Morales Vega',
+    'dmorales@mpacifico.mx',
+    '100404',
+    true,
+    false,
     'Recursos Humanos',
     'Generalista RH'
   ),
@@ -141,6 +165,10 @@ values
     '1005',
     'CRD-1005',
     'Jorge Luis Camacho Castro',
+    'jcamacho@mpacifico.mx',
+    '100505',
+    false,
+    false,
     'Mantenimiento',
     'Técnico Electromecánico'
   )

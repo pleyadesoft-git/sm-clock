@@ -456,7 +456,7 @@ export async function requireSuperAdmin(): Promise<
 
 export async function recordAuditLog(params: {
   tenantId: string | null;
-  actorId: string;
+  actorId: string | null;
   accion: string;
   detalle?: Json;
   ip?: string | null;

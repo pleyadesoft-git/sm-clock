@@ -1,0 +1,9 @@
+Cerrar sesión en agentes para permitir ingresar de nuevo con la opción de otros administradores
+Permitir borrar una cuenta (tenant) (soft-delete) en el panel de admin
+Permitir modificar campos del tenant por si cambia de correo y otra info
+En la aplicación del tenant, obligar a que se asigne una sucursal a cada  empleado y a cada usuario
+Mostrar el nombre del tenant en la app del cliente
+
+Implementar un sistema de mensaje al empleado cuando haga un check-in o check-out, si el dispositivo lo permite, si no 
+lo permite entonces enviar un correo o un mensaje por WhatsApp esto puede ser para que el Admin o personal de RH le envíe
+una notificación como ("Pasar a RH a firmar contrato", "Favor de pasar a la Administración para entrega de credencial", etc.)
