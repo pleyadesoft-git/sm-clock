@@ -41,6 +41,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Sheet } from '@/components/ui/sheet';
@@ -48,6 +59,22 @@ import { SmClockLogo } from '@/components/ui/sm-clock-logo';
 import { useToast } from '@/components/ui/toast';
 
 const STORAGE_TENANT_KEY = 'sm_clock_kiosk_tenant_code';
+
+const SelfEnrollWebAuthnFormSchema = z.object({
+  pin: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Ingresa tu PIN personal de 6 dígitos'),
+  deviceName: z
+    .string()
+    .trim()
+    .min(2, 'Ingresa un nombre para identificar este dispositivo')
+    .max(80, 'El nombre del dispositivo no puede exceder 80 caracteres'),
+});
+
+type SelfEnrollWebAuthnFormValues = z.infer<
+  typeof SelfEnrollWebAuthnFormSchema
+>;
 
 interface KioskSucursal {
   id: string;
@@ -138,11 +165,14 @@ function ChecadorKioskContent() {
 
   // Sheet para que el empleado vincule su propio dispositivo WebAuthn con su PIN
   const [enrollSheetOpen, setEnrollSheetOpen] = React.useState(false);
-  const [enrollPin, setEnrollPin] = React.useState('');
-  const [enrollDeviceName, setEnrollDeviceName] = React.useState(
-    'Mi Teléfono / Tablet',
-  );
   const [enrollingSelf, setEnrollingSelf] = React.useState(false);
+  const enrollForm = useForm<SelfEnrollWebAuthnFormValues>({
+    resolver: zodResolver(SelfEnrollWebAuthnFormSchema),
+    defaultValues: {
+      pin: '',
+      deviceName: 'Mi Teléfono / Tablet',
+    },
+  });
 
   // Reloj en vivo
   const [nowTime, setNowTime] = React.useState<Date>(() => new Date());
@@ -539,25 +569,16 @@ function ChecadorKioskContent() {
     }
   }
 
-  async function handleSelfEnrollWebAuthn(e: React.FormEvent) {
-    e.preventDefault();
-    if (!/^\d{6}$/.test(enrollPin)) {
-      toast({
-        title: 'Ingresa tu PIN de 6 dígitos',
-        description:
-          'Se requiere tu PIN personal para autorizar el vínculo de este dispositivo.',
-        variant: 'warning',
-      });
-      return;
-    }
-
+  async function handleSelfEnrollWebAuthn(
+    values: SelfEnrollWebAuthnFormValues,
+  ) {
     const effectiveTenantCode =
       tenantInfo?.tenant_code || tenantCodeInput.trim().toUpperCase() || 'TIJ-001';
 
     setEnrollingSelf(true);
     try {
       const lookupRes = await fetch(
-        `/api/checador?empresa=${encodeURIComponent(effectiveTenantCode)}&pin_codigo=${encodeURIComponent(enrollPin)}`,
+        `/api/checador?empresa=${encodeURIComponent(effectiveTenantCode)}&pin_codigo=${encodeURIComponent(values.pin)}`,
       );
       const lookupJson = (await lookupRes.json()) as {
         empleado?: {
@@ -588,12 +609,12 @@ function ChecadorKioskContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tenant_code: effectiveTenantCode,
-          pin_codigo: enrollPin,
+          pin_codigo: values.pin,
           credential_id: cred.credential_id,
           public_key: cred.public_key,
           algoritmo: cred.algoritmo,
           nombre_dispositivo:
-            enrollDeviceName.trim() || 'Móvil / Tablet Personal',
+            values.deviceName.trim() || 'Móvil / Tablet Personal',
         }),
       });
 
@@ -609,7 +630,10 @@ function ChecadorKioskContent() {
       }
 
       setEnrollSheetOpen(false);
-      setEnrollPin('');
+      enrollForm.reset({
+        pin: '',
+        deviceName: values.deviceName.trim() || 'Mi Teléfono / Tablet',
+      });
       setMetodo('WEBAUTHN');
       toast({
         title: 'Huella / FaceID vinculado con éxito',
@@ -1158,7 +1182,17 @@ function ChecadorKioskContent() {
       {/* Sheet de Auto-Enrolamiento WebAuthn con PIN de 6 dígitos */}
       <Sheet
         open={enrollSheetOpen}
-        onOpenChange={setEnrollSheetOpen}
+        onOpenChange={(open) => {
+          setEnrollSheetOpen(open);
+          if (!open) {
+            enrollForm.reset({
+              pin: '',
+              deviceName:
+                enrollForm.getValues('deviceName').trim() ||
+                'Mi Teléfono / Tablet',
+            });
+          }
+        }}
         title="Vincular mi Huella / FaceID (WebAuthn)"
         description="Ingresa tu PIN personal de 6 dígitos para autorizar y registrar el lector biométrico de este dispositivo."
         footer={
@@ -1173,7 +1207,7 @@ function ChecadorKioskContent() {
             <Button
               type="submit"
               form="self-enroll-webauthn-form"
-              disabled={enrollingSelf || enrollPin.length !== 6}
+              disabled={enrollingSelf}
             >
               <Fingerprint className="size-4" />
               <span>
@@ -1185,46 +1219,60 @@ function ChecadorKioskContent() {
           </>
         }
       >
-        <form
-          id="self-enroll-webauthn-form"
-          onSubmit={(e) => void handleSelfEnrollWebAuthn(e)}
-          className="flex flex-col gap-[var(--s-4)]"
-        >
-          <div>
-            <label
-              htmlFor="self-enroll-pin"
-              className="mb-[var(--s-1)] block text-xs font-semibold text-[var(--text-2)]"
-            >
-              Tu PIN personal de 6 dígitos
-            </label>
-            <Input
-              id="self-enroll-pin"
-              inputMode="numeric"
-              maxLength={6}
-              value={enrollPin}
-              onChange={(e) =>
-                setEnrollPin(e.target.value.replace(/\D/g, '').slice(0, 6))
-              }
-              placeholder="100101"
-              className="font-mono text-lg tracking-widest"
+        <Form {...enrollForm}>
+          <form
+            id="self-enroll-webauthn-form"
+            noValidate
+            onSubmit={enrollForm.handleSubmit((values) => {
+              void handleSelfEnrollWebAuthn(values);
+            })}
+            className="flex flex-col gap-[var(--s-4)]"
+          >
+            <FormField
+              control={enrollForm.control}
+              name="pin"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tu PIN personal de 6 dígitos</FormLabel>
+                  <FormControl>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="100101"
+                      className="font-mono text-lg tracking-widest"
+                      disabled={enrollingSelf}
+                      {...field}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value.replace(/\D/g, '').slice(0, 6),
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div>
-            <label
-              htmlFor="self-enroll-device-name"
-              className="mb-[var(--s-1)] block text-xs font-semibold text-[var(--text-2)]"
-            >
-              Nombre de este dispositivo
-            </label>
-            <Input
-              id="self-enroll-device-name"
-              value={enrollDeviceName}
-              onChange={(e) => setEnrollDeviceName(e.target.value)}
-              placeholder="Ej. iPhone de Alejandro / Tablet Caseta"
+            <FormField
+              control={enrollForm.control}
+              name="deviceName"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nombre de este dispositivo</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Ej. iPhone de Alejandro / Tablet Caseta"
+                      disabled={enrollingSelf}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-        </form>
+          </form>
+        </Form>
       </Sheet>
     </div>
   );

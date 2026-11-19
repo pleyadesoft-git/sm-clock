@@ -639,7 +639,7 @@ export default function MensajesChecadasPage() {
                     ? 'Al hacer Check-Out'
                     : 'Check-In o Check-Out'}
               </Badge>
-              <span className="text-[11px] text-[var(--text-2)]">
+              <span className="text-xs text-[var(--text-2)]">
                 {rep === 'UNA_VEZ' ? 'Mostrar 1 sola vez' : 'Mientras esté vigente'}
               </span>
             </div>
@@ -840,7 +840,7 @@ export default function MensajesChecadasPage() {
             <div className="flex flex-col gap-1">
               <Badge variant={badgeVariant}>{label}</Badge>
               {item.detalle ? (
-                <span className="text-[11px] text-[var(--text-2)]">
+                <span className="text-xs text-[var(--text-2)]">
                   {item.detalle}
                 </span>
               ) : null}

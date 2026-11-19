@@ -189,7 +189,11 @@ export const LoginView: React.FC = () => {
           {tab === 'cloud' ? (
             <div className="space-y-4">
               <Form {...formCloud}>
-                <form onSubmit={formCloud.handleSubmit(onSubmitCloud)} className="space-y-3">
+                <form
+                  noValidate
+                  onSubmit={formCloud.handleSubmit(onSubmitCloud)}
+                  className="space-y-3"
+                >
                 <FormField
                   control={formCloud.control}
                   name="email"
@@ -342,7 +346,11 @@ export const LoginView: React.FC = () => {
           </div>
           ) : (
             <Form {...formPin}>
-              <form onSubmit={formPin.handleSubmit(onSubmitPin)} className="space-y-4">
+              <form
+                noValidate
+                onSubmit={formPin.handleSubmit(onSubmitPin)}
+                className="space-y-4"
+              >
                 <div className="p-3 text-xs rounded-[var(--r-sm)] bg-[var(--surface-2)] text-[var(--text-2)] flex items-start gap-2 border border-[var(--separator)]">
                   <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent)]" />
                   <span>

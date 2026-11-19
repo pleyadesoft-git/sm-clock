@@ -350,21 +350,21 @@ export const LogsView: React.FC = () => {
       </div>
 
       {/* Consola Terminal de Logs */}
-      <div className="relative rounded-[var(--r-lg)] border border-[var(--separator)] bg-[#0d1117] text-[#e6edf3] font-mono text-[11px] overflow-hidden shadow-[var(--shadow-2)]">
+      <div className="relative rounded-[var(--r-lg)] border border-[var(--separator)] bg-[var(--console-bg)] text-[var(--console-text)] font-mono text-xs overflow-hidden shadow-[var(--shadow-2)]">
         {/* Cabecera de consola */}
-        <div className="flex items-center justify-between px-3 py-2 bg-[#161b22] border-b border-[#30363d] select-none">
+        <div className="flex items-center justify-between px-3 py-2 bg-[var(--console-surface)] border-b border-[var(--console-border)] select-none">
           <div className="flex items-center gap-2">
             <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
-              <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
-              <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[var(--console-dot-red)]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[var(--console-dot-yellow)]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-[var(--console-dot-green)]" />
             </div>
-            <span className="text-xs text-[#8b949e] font-sans font-medium ml-2">
+            <span className="text-xs text-[var(--console-muted)] font-sans font-medium ml-2">
               Consola en Vivo — Agente Local (:8085)
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-[11px] text-[#8b949e] font-sans">
+          <div className="flex items-center gap-2 text-xs text-[var(--console-muted)] font-sans">
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
                 type="checkbox"
@@ -378,9 +378,9 @@ export const LogsView: React.FC = () => {
         </div>
 
         {/* Cuerpo del log con scroll */}
-        <div className="p-3 h-[480px] overflow-y-auto space-y-1 scrollbar-thin">
+        <div className="p-3 h-[var(--console-h)] overflow-y-auto space-y-1 scrollbar-thin">
           {filteredLogs.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-[#8b949e] space-y-2">
+            <div className="h-full flex flex-col items-center justify-center text-[var(--console-muted)] space-y-2">
               <Terminal className="w-8 h-8 opacity-40" />
               <span>No hay registros de eventos para el filtro seleccionado</span>
             </div>
@@ -395,38 +395,39 @@ export const LogsView: React.FC = () => {
                   key={`${log.timestamp}-${index}`}
                   className={`p-1.5 rounded transition-colors ${
                     isErr
-                      ? 'bg-[rgba(248,81,73,0.12)] border-l-2 border-[#f85149]'
+                      ? 'bg-[var(--console-err-bg)] border-l-2 border-[var(--console-err)]'
                       : isWarn
-                      ? 'bg-[rgba(210,153,34,0.1)] border-l-2 border-[#d29922]'
-                      : 'hover:bg-[#161b22]'
+                      ? 'bg-[var(--console-warn-bg)] border-l-2 border-[var(--console-warn)]'
+                      : 'hover:bg-[var(--console-surface)]'
                   }`}
                 >
                   <div className="flex items-start gap-2">
-                    <span className="text-[#8b949e] shrink-0">{log.timestamp.slice(11, 19)}</span>
+                    <span className="text-[var(--console-muted)] shrink-0">{log.timestamp.slice(11, 19)}</span>
 
                     <Badge
                       variant="outline"
-                      className={`text-[9px] px-1 py-0 h-4 font-mono font-bold shrink-0 ${
+                      className={`text-xs leading-none px-1.5 py-0 h-4 font-mono font-bold shrink-0 ${
                         isErr
-                          ? 'border-[#f85149] text-[#f85149] bg-[rgba(248,81,73,0.1)]'
+                          ? 'border-[var(--console-err)] text-[var(--console-err)] bg-[var(--console-err-bg)]'
                           : isWarn
-                          ? 'border-[#d29922] text-[#d29922] bg-[rgba(210,153,34,0.1)]'
-                          : 'border-[#58a6ff] text-[#58a6ff] bg-[rgba(88,166,255,0.1)]'
+                          ? 'border-[var(--console-warn)] text-[var(--console-warn)] bg-[var(--console-warn-bg)]'
+                          : 'border-[var(--console-info)] text-[var(--console-info)] bg-[var(--console-info-bg)]'
                       }`}
                     >
                       {log.level}
                     </Badge>
 
-                    <span className="text-[#79c0ff] shrink-0">[{log.logger}]:</span>
+                    <span className="text-[var(--console-logger)] shrink-0">[{log.logger}]:</span>
 
-                    <span className={`flex-1 break-words ${isErr ? 'text-[#ff7b72] font-semibold' : 'text-[#c9d1d9]'}`}>
+                    <span className={`flex-1 break-words ${isErr ? 'text-[var(--console-err-text)] font-semibold' : 'text-[var(--console-text-body)]'}`}>
                       {log.message}
                     </span>
 
                     {log.traceback && (
                       <button
+                        type="button"
                         onClick={() => toggleTraceback(index)}
-                        className="text-[10px] text-[#58a6ff] hover:underline flex items-center gap-0.5 shrink-0 cursor-pointer"
+                        className="text-xs text-[var(--console-info)] hover:underline flex items-center gap-0.5 shrink-0 cursor-pointer"
                       >
                         {isTraceExpanded ? (
                           <>
@@ -444,7 +445,7 @@ export const LogsView: React.FC = () => {
                   </div>
 
                   {log.traceback && isTraceExpanded && (
-                    <pre className="mt-2 p-2 bg-[#090d13] border border-[#30363d] rounded text-[#ff7b72] text-[10px] overflow-x-auto whitespace-pre-wrap">
+                    <pre className="mt-2 p-2 bg-[var(--console-trace-bg)] border border-[var(--console-border)] rounded text-[var(--console-err-text)] text-xs overflow-x-auto whitespace-pre-wrap">
                       {log.traceback}
                     </pre>
                   )}

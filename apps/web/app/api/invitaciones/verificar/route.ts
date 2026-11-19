@@ -1,19 +1,28 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createSupabaseServiceClient } from '@/lib/server/supabase-admin';
+
+const VerificarInvitacionQuerySchema = z.object({
+  token: z.string().trim().min(16, 'Token de invitación no válido').max(256),
+});
 
 export async function GET(request: Request): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
-  const rawToken = (searchParams.get('token') ?? '').trim();
+  const parsed = VerificarInvitacionQuerySchema.safeParse({
+    token: searchParams.get('token') ?? '',
+  });
 
-  if (rawToken.length < 16) {
+  if (!parsed.success) {
     return NextResponse.json(
       { error: 'Token de invitación no válido' },
       { status: 400 },
     );
   }
 
-  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const tokenHash = createHash('sha256')
+    .update(parsed.data.token)
+    .digest('hex');
   const admin = createSupabaseServiceClient();
 
   const { data: invite, error } = await admin

@@ -444,7 +444,7 @@ export const RelojSheet: React.FC<RelojSheetProps> = ({
         )}
 
         <Form {...form}>
-          <form className="space-y-4">
+          <form noValidate className="space-y-4">
             {/* 1. Selector de Sucursal y Nomenclatura */}
             <div className="p-3 rounded-[var(--r-md)] border border-[var(--separator)] bg-[var(--surface-2)] space-y-2.5">
               <div className="flex items-center justify-between">

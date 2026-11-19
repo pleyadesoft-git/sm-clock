@@ -1,7 +1,24 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { sanitizeSearchQuery } from '@sm-clock/contracts';
 import { requireSuperAdmin } from '@/lib/server/auth';
 import { createSupabaseAdminClient } from '@/lib/server/supabase-admin';
+
+const ALLOWED_SORT_COLUMNS = [
+  'created_at',
+  'accion',
+  'actor_id',
+  'ip',
+  'tenant_id',
+] as const;
+
+const AuditoriaQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(10).max(100).default(25),
+  search: z.string().trim().max(120).optional().default(''),
+  sortBy: z.enum(ALLOWED_SORT_COLUMNS).default('created_at'),
+  sortDir: z.enum(['asc', 'desc']).default('desc'),
+});
 
 export async function GET(request: Request): Promise<NextResponse> {
   const auth = await requireSuperAdmin();
@@ -10,28 +27,23 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   const { searchParams } = new URL(request.url);
-  const page = Math.max(1, Number(searchParams.get('page') ?? '1'));
-  const pageSize = Math.min(
-    100,
-    Math.max(10, Number(searchParams.get('pageSize') ?? '25')),
-  );
-  const search = sanitizeSearchQuery(searchParams.get('search') ?? '');
+  const parsed = AuditoriaQuerySchema.safeParse({
+    page: searchParams.get('page') ?? undefined,
+    pageSize: searchParams.get('pageSize') ?? undefined,
+    search: searchParams.get('search') ?? undefined,
+    sortBy: searchParams.get('sortBy') ?? undefined,
+    sortDir: searchParams.get('sortDir') ?? undefined,
+  });
 
-  const ALLOWED_SORT_COLUMNS = [
-    'created_at',
-    'accion',
-    'actor_id',
-    'ip',
-    'tenant_id',
-  ] as const;
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Parámetros de consulta inválidos' },
+      { status: 400 },
+    );
+  }
 
-  const rawSortBy = searchParams.get('sortBy');
-  const sortBy = ALLOWED_SORT_COLUMNS.includes(
-    rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number],
-  )
-    ? (rawSortBy as (typeof ALLOWED_SORT_COLUMNS)[number])
-    : 'created_at';
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
+  const { page, pageSize, sortBy, sortDir } = parsed.data;
+  const search = sanitizeSearchQuery(parsed.data.search);
 
   const admin = createSupabaseAdminClient();
   let query = admin

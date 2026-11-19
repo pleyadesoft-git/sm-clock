@@ -213,7 +213,7 @@ function UserNavMenu({
                 />
                 <div className="flex flex-col">
                   <span>Datos principales (Nombre y Email)</span>
-                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                  <span className="text-xs font-normal text-[var(--text-2)]">
                     Editar perfil e información de cuenta
                   </span>
                 </div>
@@ -232,7 +232,7 @@ function UserNavMenu({
                 />
                 <div className="flex flex-col">
                   <span>Usuario y Contraseña</span>
-                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                  <span className="text-xs font-normal text-[var(--text-2)]">
                     Configurar o cambiar tu contraseña
                   </span>
                 </div>
@@ -251,7 +251,7 @@ function UserNavMenu({
                 />
                 <div className="flex flex-col">
                   <span>Biométricos y WebAuthn</span>
-                  <span className="text-[11px] font-normal text-[var(--text-2)]">
+                  <span className="text-xs font-normal text-[var(--text-2)]">
                     Passkeys, Touch ID, Face ID y llaves 2FA
                   </span>
                 </div>

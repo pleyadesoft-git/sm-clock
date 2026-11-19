@@ -19,6 +19,27 @@
   --danger: #c91b13;
   --danger-bg: rgb(255 59 48 / 0.15);
 
+  /* Terminal / Consola de diagnóstico (siempre oscura) */
+  --console-bg: #0d1117;
+  --console-surface: #161b22;
+  --console-trace-bg: #090d13;
+  --console-border: #30363d;
+  --console-text: #e6edf3;
+  --console-text-body: #c9d1d9;
+  --console-muted: #8b949e;
+  --console-info: #58a6ff;
+  --console-info-bg: rgb(88 166 255 / 0.1);
+  --console-logger: #79c0ff;
+  --console-warn: #d29922;
+  --console-warn-bg: rgb(210 153 34 / 0.1);
+  --console-err: #f85149;
+  --console-err-text: #ff7b72;
+  --console-err-bg: rgb(248 81 73 / 0.12);
+  --console-dot-red: #ff5f56;
+  --console-dot-yellow: #ffbd2e;
+  --console-dot-green: #27c93f;
+  --console-h: 30rem;
+
   /* Subtle vertical gradients (buttons) */
   --grad-primary: linear-gradient(180deg, #2b8cff 0%, #007aff 100%);
   --grad-danger: linear-gradient(180deg, #ff5a50 0%, #ff3b30 100%);

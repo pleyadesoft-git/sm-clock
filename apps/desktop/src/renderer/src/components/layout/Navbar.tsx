@@ -82,7 +82,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[var(--surface-translucent)] backdrop-blur-[20px] border-b border-[var(--separator)] select-none">
+    <header className="sticky top-0 z-40 bg-[var(--surface-translucent)] backdrop-blur-xl border-b border-[var(--separator)] select-none">
       {/* Barra superior con controles de ventana e información del motor */}
       <div className={`h-14 px-4 flex items-center justify-between gap-3 ${isMac ? 'pl-20' : ''}`}>
         {/* Logo y título */}
@@ -90,7 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <SmClockLogo size={28} />
           <div className="flex flex-col">
             <span className="font-bold text-sm leading-tight text-[var(--text)]">SM-Clock</span>
-            <span className="text-[10px] text-[var(--text-2)] font-medium leading-none">
+            <span className="text-xs text-[var(--text-2)] font-medium leading-none">
               Agente de Sincronización
             </span>
           </div>
@@ -100,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {sidecarRunning ? (
               <Badge
                 variant="outline"
-                className="text-[10px] bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)] flex items-center gap-1.5 py-0.5 px-2"
+                className="text-xs bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)] flex items-center gap-1.5 py-0.5 px-2"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)] animate-pulse" />
                 <span>Motor Activo (:8085)</span>
@@ -109,14 +109,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5">
                 <Badge
                   variant="outline"
-                  className="text-[10px] bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger)] py-0.5 px-2"
+                  className="text-xs bg-[var(--danger-bg)] text-[var(--danger)] border-[var(--danger)] py-0.5 px-2"
                 >
                   Motor Detenido
                 </Badge>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-1.5 text-[10px] text-[var(--accent)]"
+                  className="h-6 px-1.5 text-xs text-[var(--accent)]"
                   onClick={handleRestartMotor}
                   disabled={restarting}
                 >
@@ -165,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Terminal className="w-3.5 h-3.5" />
             <span>Logs & Errores</span>
             {errorCount > 0 && (
-              <span className="w-4 h-4 rounded-full bg-[var(--danger)] text-white text-[9px] font-bold flex items-center justify-center ml-0.5">
+              <span className="min-w-4 h-4 px-1 rounded-full bg-[var(--danger)] text-[var(--text-on-accent)] text-xs leading-none font-bold flex items-center justify-center ml-0.5">
                 {errorCount > 99 ? '99+' : errorCount}
               </span>
             )}
@@ -194,9 +194,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Badge para Admin de Empresa */}
           {user?.rol !== 'SUPER_ADMIN' && (
-            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-[var(--r-sm)] bg-[var(--surface-2)] text-[11px] text-[var(--text-2)] border border-[var(--separator)]">
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-[var(--r-sm)] bg-[var(--surface-2)] text-xs text-[var(--text-2)] border border-[var(--separator)]">
               <span className="font-semibold text-[var(--text)]">{user?.rol === 'ADMIN_EMPRESA' ? 'Admin' : 'Operador'}:</span>
-              <span className="max-w-[140px] truncate">{user?.email}</span>
+              <span className="max-w-36 truncate">{user?.email}</span>
             </div>
           )}
 

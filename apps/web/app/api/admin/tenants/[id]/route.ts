@@ -83,7 +83,7 @@ export async function PATCH(
         {
           error: 'No se pudo actualizar la empresa',
           details: error
-            ? `Postgres [${error.code}]: ${error.message} (${error.details ?? ''})`
+            ? 'Verifica que los datos (como código de empresa o RFC) no estén duplicados.'
             : 'Registro no encontrado',
         },
         { status: 400 },
