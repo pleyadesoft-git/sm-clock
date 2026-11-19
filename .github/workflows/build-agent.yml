@@ -255,13 +255,20 @@ jobs:
       - name: List downloaded artifacts
         run: ls -la ./release-files
 
+      - name: Flatten downloaded artifacts to release-dist
+        run: |
+          mkdir -p ./release-dist
+          find ./release-files -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec cp {} ./release-dist/ \;
+          echo "=== Archivos en release-dist listos para publicar ==="
+          ls -lh ./release-dist/
+
       - name: Publish GitHub Release (Latest & Tags)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'latest' }}
           name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'Agente Local Multiplataforma (Última Versión)' }}
           make_latest: true
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           body: |
             ## SM-Clock Agente Local Multiplataforma (macOS & Windows)
             Agente para captura de checadas de relojes ZKTeco y Hikvision (Tijuana, B.C.).
@@ -276,10 +283,10 @@ jobs:
             - **macOS**: Abre el archivo `SM-Clock-Agente-mac.dmg`, arrastra `SM-Clock Agente` a la carpeta Aplicaciones y ábrelo.
             - **Windows**: Ejecuta el instalador `SM-Clock-Agente-Setup.exe` y sigue los pasos del asistente.
           files: |
-            ./release-files/SM-Clock-Agente-mac.dmg
-            ./release-files/SM-Clock-Agente-Setup.exe
-            ./release-files/sm-clock-agent-windows-x64.zip
-            ./release-files/sm-clock-agent.exe
+            ./release-dist/SM-Clock-Agente-mac.dmg
+            ./release-dist/SM-Clock-Agente-Setup.exe
+            ./release-dist/sm-clock-agent-windows-x64.zip
+            ./release-dist/sm-clock-agent.exe
           prerelease: false
           draft: false
         env:

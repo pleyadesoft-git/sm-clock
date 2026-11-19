@@ -185,7 +185,17 @@ export class SidecarManager {
     this.isShuttingDown = true;
     if (this.process && !this.process.killed) {
       this.appendLog('INFO', 'Deteniendo proceso del agente...');
-      this.process.kill('SIGTERM');
+      const pid = this.process.pid;
+      if (process.platform === 'win32' && pid) {
+        try {
+          const { execSync } = await import('child_process');
+          execSync(`taskkill /pid ${pid} /T /F`);
+        } catch {
+          // Si el proceso ya cerró
+        }
+      } else {
+        this.process.kill('SIGTERM');
+      }
       const proc = this.process;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(() => {

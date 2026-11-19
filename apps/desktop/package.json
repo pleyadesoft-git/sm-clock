@@ -1,6 +1,6 @@
 {
   "name": "@sm-clock/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Agente local de escritorio SM-Clock para captura y monitoreo de checadas de asistencia",
   "author": "SM-Clock",
   "private": true,
@@ -82,7 +82,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SM-Clock Agente"
+      "shortcutName": "SM-Clock Agente",
+      "include": "assets/installer.nsh"
     }
   }
 }

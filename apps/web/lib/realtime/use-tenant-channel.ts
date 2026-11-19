@@ -136,7 +136,17 @@ export function useTenantChannel({
         {
           event: '*',
           schema: 'public',
-          table: 'usuarios',
+          table: 'perfiles_usuarios',
+          filter: `tenant_id=eq.${effectiveTenantId}`,
+        },
+        handleBroadcast,
+      );
+      ch.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invitaciones_usuarios',
           filter: `tenant_id=eq.${effectiveTenantId}`,
         },
         handleBroadcast,
