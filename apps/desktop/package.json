@@ -69,7 +69,8 @@
       "category": "public.app-category.business",
       "target": ["dmg", "zip"],
       "icon": "assets/icons/icon-512.png",
-      "artifactName": "SM-Clock-Agente-${os}.${ext}"
+      "identity": null,
+      "artifactName": "SM-Clock-Agente-mac.${ext}"
     },
     "win": {
       "target": ["nsis"],

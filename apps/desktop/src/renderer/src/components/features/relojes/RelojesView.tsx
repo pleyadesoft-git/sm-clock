@@ -197,6 +197,11 @@ export const RelojesView: React.FC = () => {
         header: 'Nombre / Ubicación',
         cell: ({ row }) => (
           <div className="flex flex-col">
+            {row.original.clave && (
+              <code className="text-[11px] font-bold font-mono text-[var(--accent)] bg-[var(--surface-2)] px-1.5 py-0.5 rounded-[var(--r-sm)] border border-[var(--separator)] w-fit mb-0.5">
+                {row.original.clave}
+              </code>
+            )}
             <span className="font-semibold text-sm">{row.original.nombre}</span>
             <span className="text-[11px] text-[var(--text-2)] font-mono">
               ID: {row.original.id.slice(0, 8)}...

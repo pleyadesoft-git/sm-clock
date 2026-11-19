@@ -31,6 +31,9 @@ export interface ClockRecord {
   usuario?: string | null;
   has_password?: boolean;
   activo: boolean;
+  sucursal_id?: string | null;
+  clave?: string | null;
+  consecutivo_sucursal?: number | null;
   ultimo_ping?: string | null;
   ultimo_error?: string | null;
   created_at?: string;
@@ -41,6 +44,18 @@ export interface TestConnectionResult {
   ok: boolean;
   mensaje: string;
   latencia_ms: number;
+}
+
+export interface TestReadRecordsResult {
+  ok: boolean;
+  mensaje: string;
+  total_registros: number;
+  registros: Array<{
+    codigo_empleado?: string;
+    ts_local?: string;
+    tipo_marca?: string;
+    metodo?: string;
+  }>;
 }
 
 export interface LogEntry {
@@ -217,6 +232,19 @@ export const agentApi = {
     usuario?: string;
     password?: string;
   }) => agentFetch<TestConnectionResult>('/api/relojes/test', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+
+  testReadRecords: (payload: {
+    id?: string;
+    tipo: string;
+    ip: string;
+    puerto: number;
+    comm_key?: number;
+    usuario?: string;
+    password?: string;
+  }) => agentFetch<TestReadRecordsResult>('/api/relojes/test-read', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
